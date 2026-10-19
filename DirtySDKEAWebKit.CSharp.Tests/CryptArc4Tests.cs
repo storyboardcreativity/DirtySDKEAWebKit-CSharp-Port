@@ -2,7 +2,7 @@ using System;
 using Xunit;
 using DirtySDKEAWebKit;
 
-namespace MyProject.Tests;
+namespace DirtySDKEAWebKit.Tests;
 
 public class CryptArc4Tests
 {
