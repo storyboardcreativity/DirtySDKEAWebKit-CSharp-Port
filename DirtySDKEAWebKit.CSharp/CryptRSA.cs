@@ -23,21 +23,6 @@ namespace DirtySDKEAWebKit
     {
         private const int MaxWords = 4096 / 16;
 
-        // Closest managed equivalent of the supplied NetTick()
-        // (uses process CPU time)
-        public static uint NetTick()
-        {
-            double milliseconds =
-                Process.GetCurrentProcess().TotalProcessorTime.TotalMilliseconds;
-
-            return unchecked((uint)milliseconds);
-        }
-
-        private static void NetPrintf(string message)
-        {
-            Console.Write(message);
-        }
-
         private static int Addition(ushort[] result, int width, ushort[] add1, ushort[] add2)
         {
             uint accum = 0;
@@ -218,7 +203,7 @@ namespace DirtySDKEAWebKit
             }
             else
             {
-                NetPrintf(
+                Tools.NetPrintf(
                     "cryptrsa: warning; executing general case code, " +
                     "which is likely to be slow\n");
 
@@ -247,7 +232,7 @@ namespace DirtySDKEAWebKit
 
             if (modSize > maxModSize)
             {
-                NetPrintf(
+                Tools.NetPrintf(
                     $"cryptrsa: requested iModSize of {modSize} " +
                     $"is too large; truncating to {maxModSize}\n");
 
@@ -256,7 +241,7 @@ namespace DirtySDKEAWebKit
 
             if (expSize > maxExpSize)
             {
-                NetPrintf(
+                Tools.NetPrintf(
                     $"cryptrsa: requested iExpSize of {expSize} " +
                     $"is too large; truncating to {maxExpSize}\n");
 
@@ -273,7 +258,7 @@ namespace DirtySDKEAWebKit
         public static void CryptRSAInitMaster(CryptRSAT state, byte[] master, int masterLen)
         {
             int index;
-            uint random = NetTick();
+            uint random = Tools.NetTick();
 
             for (index = 0; index < state.iKeyModSize; ++index)
             {
