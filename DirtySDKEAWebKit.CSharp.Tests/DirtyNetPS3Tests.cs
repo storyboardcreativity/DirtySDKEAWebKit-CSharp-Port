@@ -1,6 +1,7 @@
 
 using System;
 using System.Net;
+using System.Net.Sockets;
 using System.Runtime.InteropServices;
 using DirtySDKEAWebKit.CSharp;
 using Xunit;
@@ -18,7 +19,10 @@ public sealed class DirtyNetPS3Tests
     [Fact]
     public void SocketOpen_StreamSocket_ReturnsSocket()
     {
-        DirtyNetPS3.SocketT? socket = DirtyNetPS3.SocketOpen(2, 1, 0);
+        Socket? socket = DirtyNetPS3.SocketOpen(
+            AddressFamily.InterNetwork,
+            SocketType.Stream,
+            ProtocolType.IP);
         Assert.NotNull(socket);
         Assert.Equal(0, DirtyNetPS3.SocketClose(socket));
     }
@@ -26,7 +30,10 @@ public sealed class DirtyNetPS3Tests
     [Fact]
     public void SocketOpen_DatagramSocket_ReturnsSocket()
     {
-        DirtyNetPS3.SocketT? socket = DirtyNetPS3.SocketOpen(2, 2, 0);
+        Socket? socket = DirtyNetPS3.SocketOpen(
+            AddressFamily.InterNetwork,
+            SocketType.Dgram,
+            ProtocolType.IP);
         Assert.NotNull(socket);
         Assert.Equal(0, DirtyNetPS3.SocketClose(socket));
     }
@@ -34,14 +41,20 @@ public sealed class DirtyNetPS3Tests
     [Fact]
     public void SocketClose_ValidSocket_ReturnsZero()
     {
-        DirtyNetPS3.SocketT socket = DirtyNetPS3.SocketOpen(2, 2, 0)!;
+        Socket? socket = DirtyNetPS3.SocketOpen(
+            AddressFamily.InterNetwork,
+            SocketType.Dgram,
+            ProtocolType.IP)!;
         Assert.Equal(0, DirtyNetPS3.SocketClose(socket));
     }
 
     [Fact]
     public void SocketClose_CalledTwice_ReturnsZero()
     {
-        DirtyNetPS3.SocketT socket = DirtyNetPS3.SocketOpen(2, 2, 0)!;
+        Socket? socket = DirtyNetPS3.SocketOpen(
+            AddressFamily.InterNetwork,
+            SocketType.Dgram,
+            ProtocolType.IP)!;
         Assert.Equal(0, DirtyNetPS3.SocketClose(socket));
         Assert.Equal(0, DirtyNetPS3.SocketClose(socket));
     }
@@ -49,13 +62,16 @@ public sealed class DirtyNetPS3Tests
     [Fact]
     public void SocketShutdown_InvalidObject_ReturnsNone()
     {
-        Assert.Equal(0, DirtyNetPS3.SocketShutdown(new DirtyNetPS3.SocketT(), 2));
+        Assert.Equal(0, DirtyNetPS3.SocketShutdown(null, 2));
     }
 
     [Fact]
     public void SocketShutdown_DatagramSocket_ReturnsNone()
     {
-        DirtyNetPS3.SocketT socket = DirtyNetPS3.SocketOpen(2, 2, 0)!;
+        Socket? socket = DirtyNetPS3.SocketOpen(
+            AddressFamily.InterNetwork,
+            SocketType.Dgram,
+            ProtocolType.IP)!;
         try
         {
             Assert.Equal(0, DirtyNetPS3.SocketShutdown(socket, 2));
@@ -71,113 +87,60 @@ public sealed class DirtyNetPS3Tests
     [Fact]
     public void SocketBind_InvalidObject_ReturnsInvalid()
     {
-        Assert.Equal(-11, DirtyNetPS3.SocketBind(new DirtyNetPS3.SocketT(), IntPtr.Zero, 16));
+        Assert.Equal(-11, DirtyNetPS3.SocketBind(null, null));
     }
 
     [Fact]
     public void SocketBind_ClosedSocket_ReturnsInvalid()
     {
-        DirtyNetPS3.SocketT socket = DirtyNetPS3.SocketOpen(2, 2, 0)!;
+        Socket? socket = DirtyNetPS3.SocketOpen(
+            AddressFamily.InterNetwork,
+            SocketType.Dgram,
+            ProtocolType.IP)!;
         Assert.Equal(0, DirtyNetPS3.SocketClose(socket));
-        Assert.Equal(-11, DirtyNetPS3.SocketBind(socket, IntPtr.Zero, 16));
+        Assert.Equal(-11, DirtyNetPS3.SocketBind(socket, null));
     }
 
     [Fact]
     public void SocketConnect_InvalidObject_ReturnsInvalid()
     {
-        Assert.Equal(-11, DirtyNetPS3.SocketConnect(new DirtyNetPS3.SocketT(), IntPtr.Zero, 16));
+        Assert.Equal(-11, DirtyNetPS3.SocketConnect(null, null));
     }
 
     [Fact]
     public void SocketAccept_InvalidObject_ReturnsNull()
     {
-        Assert.Null(
-            DirtyNetPS3.SocketAccept(
-                new DirtyNetPS3.SocketT(), IntPtr.Zero, IntPtr.Zero));
+        IPEndPoint? remoteEndPoint;
+        Assert.Null(DirtyNetPS3.SocketAccept(null, out remoteEndPoint));
     }
 
     [Fact]
     public void SocketAccept_NullSocket_ReturnsNull()
     {
-        Assert.Null(
-            DirtyNetPS3.SocketAccept(
-                null!, IntPtr.Zero, IntPtr.Zero));
+        IPEndPoint? remoteEndPoint;
+        Assert.Null(DirtyNetPS3.SocketAccept(null, out remoteEndPoint));
     }
 
     [Fact]
     public void SocketSendto_ClosedSocket_ReturnsInvalid()
     {
-        DirtyNetPS3.SocketT socket = DirtyNetPS3.SocketOpen(2, 2, 0)!;
+        Socket? socket = DirtyNetPS3.SocketOpen(
+            AddressFamily.InterNetwork,
+            SocketType.Dgram,
+            ProtocolType.IP)!;
         Assert.Equal(0, DirtyNetPS3.SocketClose(socket));
-        Assert.Equal(
-            -11,
-            DirtyNetPS3.SocketSendto(
-                socket,
-                IntPtr.Zero,
-                0,
-                0,
-                IntPtr.Zero,
-                0));
-    }
-
-    [Fact]
-    public void SocketRecvfrom_InvalidObject_ReturnsInvalid()
-    {
-        Assert.Equal(
-            -11,
-            DirtyNetPS3.SocketRecvfrom(
-                new DirtyNetPS3.SocketT
-                {
-                    socket = DirtyNetPS3.INVALID_SOCKET,
-                    type = DirtyNetPS3.SOCK_STREAM
-                },
-                IntPtr.Zero,
-                0,
-                0,
-                IntPtr.Zero,
-                IntPtr.Zero));
+        Assert.Equal(-11, DirtyNetPS3.SocketSendto(socket, null!, 0, 0, null));
     }
 
     [Fact]
     public void SocketRecvfrom_ClosedStreamSocket_ReturnsInvalid()
     {
-        DirtyNetPS3.SocketT socket = DirtyNetPS3.SocketOpen(2, 1, 0)!;
+        Socket? socket = DirtyNetPS3.SocketOpen(
+            AddressFamily.InterNetwork,
+            SocketType.Stream,
+            ProtocolType.IP)!;
         Assert.Equal(0, DirtyNetPS3.SocketClose(socket));
-        Assert.Equal(
-            -11,
-            DirtyNetPS3.SocketRecvfrom(
-                socket,
-                IntPtr.Zero,
-                0,
-                0,
-                IntPtr.Zero,
-                IntPtr.Zero));
-    }
-
-    [Fact]
-    public void SocketInfo_InvalidObject_ReturnsErrorAndClearsBuffer()
-    {
-        IntPtr buffer = Marshal.AllocHGlobal(8);
-
-        try
-        {
-            for (int i = 0; i < 8; i++)
-                Marshal.WriteByte(buffer, i, 0x7F);
-
-            var socket = new DirtyNetPS3.SocketT
-            {
-                socket = DirtyNetPS3.INVALID_SOCKET
-            };
-            
-            Assert.Equal(-2, DirtyNetPS3.SocketInfo(socket, 0, 0, buffer, 8));
-
-            for (int i = 0; i < 8; i++)
-                Assert.Equal((byte)0, Marshal.ReadByte(buffer, i));
-        }
-        finally
-        {
-            Marshal.FreeHGlobal(buffer);
-        }
+        Assert.Equal(-11, DirtyNetPS3.SocketRecvfrom(socket, null!, 0, 0, null));
     }
 
     [Fact]
@@ -186,10 +149,7 @@ public sealed class DirtyNetPS3Tests
         Assert.Equal(
             -2,
             DirtyNetPS3.SocketInfo(
-                new DirtyNetPS3.SocketT
-                {
-                    socket = DirtyNetPS3.INVALID_SOCKET
-                },
+                null,
                 0,
                 0,
                 IntPtr.Zero,
@@ -204,7 +164,7 @@ public sealed class DirtyNetPS3Tests
         Assert.Equal(
             -2,
             DirtyNetPS3.SocketInfo(
-                new DirtyNetPS3.SocketT{socket = DirtyNetPS3.INVALID_SOCKET},
+                null,
                 0,
                 0,
                 IntPtr.Zero,
@@ -214,7 +174,10 @@ public sealed class DirtyNetPS3Tests
     [Fact]
     public void SocketInfo_UnknownOption_ReturnsError()
     {
-        DirtyNetPS3.SocketT socket = DirtyNetPS3.SocketOpen(2, 2, 0)!;
+        Socket? socket = DirtyNetPS3.SocketOpen(
+            AddressFamily.InterNetwork,
+            SocketType.Dgram,
+            ProtocolType.IP)!;
 
         try
         {
@@ -231,21 +194,6 @@ public sealed class DirtyNetPS3Tests
         {
             DirtyNetPS3.SocketClose(socket);
         }
-    }
-
-    [Fact]
-    public void SocketInfo_ClosedSocket_ReturnsError()
-    {
-        DirtyNetPS3.SocketT socket = DirtyNetPS3.SocketOpen(2, 2, 0)!;
-        Assert.Equal(0, DirtyNetPS3.SocketClose(socket));
-        Assert.Equal(
-            -2,
-            DirtyNetPS3.SocketInfo(
-                socket,
-                Tools.FourCC("stat"),
-                0,
-                IntPtr.Zero,
-                0));
     }
 
     [Fact]

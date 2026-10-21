@@ -3,6 +3,7 @@ using System.Net;
 using System.Linq;
 using System.Security.Cryptography;
 using DirtySDKEAWebKit.CSharp;
+using System.Net.Sockets;
 
 namespace DirtySDKEAWebKit
 {
@@ -205,7 +206,7 @@ namespace DirtySDKEAWebKit
 
     public sealed class ProtoSSLRefT
     {
-        public DirtyNetPS3.SocketT? pSock = new DirtyNetPS3.SocketT();
+        public Socket? pSock = null;
         public DirtyNetPS3.HostentT? pHost = new DirtyNetPS3.HostentT();
 
         public int iMemGroup;
@@ -262,20 +263,19 @@ namespace DirtySDKEAWebKit
             // DirtyMemFree для самого pState не требуется.
         }
 
-        public static int ProtoSSLBind(ProtoSSLRefT pState, IntPtr pAddr, int iAddrlen)
+        public static int ProtoSSLBind(ProtoSSLRefT pState, EndPoint pAddr)
         {
             if (pState.pSock != null)
             {
                 DirtyNetPS3.SocketClose(pState.pSock);
+                pState.pSock = null;
             }
 
-            pState.pSock = DirtyNetPS3.SocketOpen(DirtyNetPS3.AF_INET, DirtyNetPS3.SOCK_STREAM, 0);
+            pState.pSock = DirtyNetPS3.SocketOpen(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.IP);
             if (pState.pSock == null)
-            {
                 return DirtyNetPS3.SOCKERR_OTHER;
-            }
 
-            return DirtyNetPS3.SocketBind(pState.pSock, pAddr, iAddrlen);
+            return DirtyNetPS3.SocketBind(pState.pSock, pAddr);
         }
 
         public static int ProtoSSLConnect(ProtoSSLRefT pState, int iSecure, string? pAddr, uint uAddr, int iPort)
@@ -286,7 +286,7 @@ namespace DirtySDKEAWebKit
                 return iError;
             }
 
-            pState.pSock = DirtyNetPS3.SocketOpen(DirtyNetPS3.AF_INET, DirtyNetPS3.SOCK_STREAM, 0);
+            pState.pSock = DirtyNetPS3.SocketOpen(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.IP);
 
             if (pState.pSock == null)
             {

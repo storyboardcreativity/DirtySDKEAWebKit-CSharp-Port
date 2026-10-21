@@ -49,9 +49,6 @@ public static class DirtyNetPS3
 
     public const int SOCKET_ERROR = -1;
 
-    private static readonly PlatformSocketAPICallbacks gPlatformSocketAPICallbacks = new(
-        OperatingSystem.IsWindows() ? unchecked((int)0xFFAACC01) : unchecked((int)0xFFAACC01));
-
     private static SocketStateT? _Socket_pState = null;
     private static int _Socket_iMemPoolSize = 128 * 1024;
 
@@ -115,75 +112,81 @@ public static class DirtyNetPS3
         SocketCreate(0);
     }
 
-    private static int _XlatError(int error) =>
-        gPlatformSocketAPICallbacks.getlasterror(error);
+    private static int _XlatError(SocketError error)
+    {
+        return error switch
+        {
+            SocketError.Success => 0,
+            SocketError.WouldBlock or SocketError.IOPending => 0,
+            SocketError.NetworkUnreachable or SocketError.HostUnreachable => -5,
+            SocketError.NotConnected => -2,
+            SocketError.ConnectionRefused => -6,
+            SocketError.InvalidArgument => -11,
+            SocketError.ConnectionReset => -13,
+            _ => -7
+        };
+    }
 
-    //private static Sockaddr _SockAddrToSceAddr(in Sockaddr source) => source;
-
-    private static SocketT? _SocketOpen(nint socket, int family, int type, int proto, int opened)
+    private static Socket? _SocketOpen(Socket? socket, AddressFamily family, SocketType type, ProtocolType proto, bool opened)
     {
         SocketStateT? state = _Socket_pState;
         if (state is null)
             return null;
-
-        SocketT result = new();
-
-        if (socket == INVALID_SOCKET)
+            
+        try
         {
-            socket = gPlatformSocketAPICallbacks.socket(AF_INET, type, proto);
-            if (socket >= 0)
+            if (socket is null)
             {
-                IntPtr value = Marshal.AllocHGlobal(sizeof(uint));
-                try
-                {
-                    Marshal.WriteInt32(value, 1);
-                    gPlatformSocketAPICallbacks.setsockopt(
-                        socket, SOL_SOCKET, gPlatformSocketAPICallbacks.SO_NBIO,
-                        value, sizeof(uint));
-                }
-                finally
-                {
-                    Marshal.FreeHGlobal(value);
-                }
+                socket = new Socket(family, type, proto);
+                socket.Blocking = false;
             }
-            else
-            {
-                Tools.NetPrintf($"dirtynetps3: socket() failed (err={socket})");
-            }
-        }
 
-        result.family = family;
-        result.type = type;
-        result.proto = proto;
-        result.socket = socket;
-        result.opened = (sbyte)opened;
-        return result;
+            return socket;
+        }
+        catch (SocketException ex)
+        {
+            Tools.NetPrintf($"dirtynetps3: socket() failed (err={ex.SocketErrorCode})");
+            return null;
+        }
     }
 
-    private static int _SocketClose(SocketT socket)
+    private static int _SocketRecvfrom(Socket? socket, byte[] buffer, int length, EndPoint? from)
     {
-        socket.socket = INVALID_SOCKET;
-        socket.opened = 0;
-        return 0;
-    }
+        if (socket == null)
+            return -1;
 
-    private static int _SocketRecvfrom(SocketT socket, IntPtr buffer, int length, IntPtr from, IntPtr fromLength)
-    {
-        if (from != IntPtr.Zero)
+        if (length < 0 || length > buffer.Length)
+            return -1;
+
+        try
         {
-            if (fromLength == IntPtr.Zero)
-                return -1;
+            if (from is not null)
+            {
+                EndPoint remote = from;
+                int result = socket.ReceiveFrom(
+                    buffer,
+                    0,
+                    length,
+                    SocketFlags.None,
+                    ref remote);
 
-            int fromLen = Marshal.ReadInt32(fromLength);
-            int result = checked((int)gPlatformSocketAPICallbacks.recvfrom(
-                socket.socket, buffer, (nuint)length, 0, from, ref fromLen));
+                return result;
+            }
 
-            Marshal.WriteInt32(fromLength, fromLen);
-            return result;
+            return socket.Receive(
+                buffer,
+                0,
+                length,
+                SocketFlags.None);
         }
-
-        return checked((int)gPlatformSocketAPICallbacks.recv(
-            socket.socket, buffer, (nuint)length, 0));
+        catch (SocketException ex)
+        {
+            return _XlatError(ex.SocketErrorCode);
+        }
+        catch (ObjectDisposedException)
+        {
+            return SOCKERR_INVALID;
+        }
     }
 
     private static int SocketCreate(int threadPriority)
@@ -200,8 +203,7 @@ public static class DirtyNetPS3
         //if (stateMemory == IntPtr.Zero)
         //    return -2;
 
-        IntPtr pool = DirtyMem.DirtyMemAlloc(
-            _Socket_iMemPoolSize, SOCKET_MEMID, group, userData);
+        IntPtr pool = DirtyMem.DirtyMemAlloc(_Socket_iMemPoolSize, SOCKET_MEMID, group, userData);
 
         if (pool == IntPtr.Zero)
         {
@@ -233,199 +235,216 @@ public static class DirtyNetPS3
         return 0;
     }
 
-    public static SocketT? SocketOpen(int family, int type, int proto) =>
-        _SocketOpen(-1, family, type, proto, 0);
+    public static Socket? SocketOpen(AddressFamily family, SocketType type, ProtocolType proto) =>
+        _SocketOpen(null, family, type, proto, false);
 
-    public static int SocketClose(SocketT socket)
+    public static int SocketClose(Socket socket)
     {
-        nint fd = socket.socket;
         SocketShutdown(socket, SOCK_NOSEND);
-        if (_SocketClose(socket) < 0)
-            return -1;
 
-        if (fd >= 0)
+        try
         {
-            int iResult = gPlatformSocketAPICallbacks.close(fd);
-            if (iResult < 0)
-                Tools.NetPrintf("dirtynetps3: socketclose() failed (err=" + iResult + ")\n");
+            socket.Dispose();
+        }
+        catch (SocketException ex)
+        {
+            Tools.NetPrintf($"dirtynetps3: socketclose() failed (err={ex.SocketErrorCode})\n");
         }
 
         return 0;
     }
 
-    public static int SocketShutdown(SocketT socket, int how)
+    public static int SocketShutdown(Socket? socket, int how)
     {
-        if (socket.type != SOCK_STREAM || socket.socket == INVALID_SOCKET)
+        if (socket == null || socket.SocketType != SocketType.Stream)
             return SOCKERR_NONE;
 
-        int nativeHow = how switch
-        {
-            SOCK_NOSEND => OperatingSystem.IsWindows() ? 1 : 1, // SHUT_WR
-            SOCK_NORECV => OperatingSystem.IsWindows() ? 0 : 0, // SHUT_RD
-            SOCK_NOSEND | SOCK_NORECV => 2, // SHUT_RDWR
-            _ => how
-        };
-
-        int iResult = gPlatformSocketAPICallbacks.shutdown(socket.socket, nativeHow);
-        if (iResult < 0)
-            Tools.NetPrintf($"dirtynetps3: shutdown() failed (err={iResult})\n");
-
-        return _XlatError(iResult);
-    }
-
-    public static int SocketBind(SocketT socket, IntPtr address, int addressLength)
-    {
-        if (socket is not SocketT s || s.socket < 0 || address == IntPtr.Zero)
-            return SOCKERR_INVALID;
-
-        return _XlatError(gPlatformSocketAPICallbacks.bind(
-            s.socket, address, addressLength));
-    }
-
-    public static int SocketConnect(SocketT socket, IntPtr address, int addressLength)
-    {
-        if (socket is not SocketT s || s.socket < 0 || address == IntPtr.Zero)
-            return SOCKERR_INVALID;
-
-        s.opened = 0;
-        int result = gPlatformSocketAPICallbacks.connect(s.socket, address, addressLength);
-
-        if (result < 0 && _XlatError(result) != SOCKERR_NONE)
-            Tools.NetPrintf($"dirtynetps3: connect() failed (err={result})");
-
-        return _XlatError(result);
-    }
-
-    public static int SocketConnect(SocketT socket, EndPoint endpoint)
-    {
-        SocketAddress address = endpoint.Serialize();
-
-        byte[] buffer = new byte[address.Size];
-
-        for (int i = 0; i < address.Size; i++)
-            buffer[i] = address[i];
-
-        GCHandle handle = GCHandle.Alloc(buffer, GCHandleType.Pinned);
         try
         {
-            return SocketConnect(socket, handle.AddrOfPinnedObject(), buffer.Length);
+            SocketShutdown howTo = how switch
+            {
+                SOCK_NOSEND => System.Net.Sockets.SocketShutdown.Send,
+                SOCK_NORECV => System.Net.Sockets.SocketShutdown.Receive,
+                SOCK_NOSEND | SOCK_NORECV => System.Net.Sockets.SocketShutdown.Both,
+                _ => (SocketShutdown)how
+            };
+
+            socket.Shutdown(howTo);
+            return SOCKERR_NONE;
         }
-        finally
+        catch (SocketException ex)
         {
-            handle.Free();
+            Tools.NetPrintf($"dirtynetps3: shutdown() failed (err={ex.SocketErrorCode})\n");
+            return _XlatError(ex.SocketErrorCode);
         }
-    }
-
-    public static int SocketListen(SocketT socket, int backlog)
-    {
-        int iResult = gPlatformSocketAPICallbacks.listen(socket.socket, backlog);
-        if (iResult < 0)
-            Tools.NetPrintf($"dirtynetps3: listen() failed (err={iResult})\n");
-        return _XlatError(iResult);
-    }
-
-    public static SocketT? SocketAccept(SocketT socket, IntPtr address, IntPtr addressLength)
-    {
-        if (socket is not SocketT s || s.socket == INVALID_SOCKET || s.family != AF_INET)
-            return null;
-
-        int length = 0;
-
-        if (address != IntPtr.Zero)
+        catch (ObjectDisposedException)
         {
-            if (addressLength == IntPtr.Zero)
-                return null;
-
-            length = Marshal.ReadInt32(addressLength);
-            if (length <= 0)
-                return null;
+            return SOCKERR_NONE;
         }
-
-        nint incoming = gPlatformSocketAPICallbacks.accept(s.socket, address, ref length);
-
-        if (address != IntPtr.Zero)
-            Marshal.WriteInt32(addressLength, length);
-
-        if (incoming < 0)
-            return null;
-
-        return _SocketOpen(incoming, s.family, s.type, s.proto, 1);
     }
 
-    public static int SocketSendto(SocketT socket, IntPtr buffer, int length, int flags, IntPtr address, int addressLength)
+    public static int SocketBind(Socket? socket, EndPoint? endpoint)
     {
-        if (socket.socket < 0)
+        if (socket is null || endpoint is null)
             return SOCKERR_INVALID;
 
-        nint result = address == IntPtr.Zero
-            ? gPlatformSocketAPICallbacks.send(socket.socket, buffer, (nuint)length, 0)
-            : gPlatformSocketAPICallbacks.sendto(
-                socket.socket, buffer, (nuint)length, 0, address, addressLength);
-
-        return _XlatError(checked((int)result));
-    }
-
-    public static int SocketSend(SocketT socket, IntPtr buffer, int length, int flags)
-    {
-        return SocketSendto(socket, buffer, length, flags, IntPtr.Zero, 0);
-    }
-
-    public static int SocketSend(SocketT socket, byte[] buffer, int length, int flags)
-    {
-        GCHandle handle = GCHandle.Alloc(buffer, GCHandleType.Pinned);
         try
         {
-            return SocketSend(socket, handle.AddrOfPinnedObject(), length, flags);
+            socket.Bind(endpoint);
+            return SOCKERR_NONE;
         }
-        finally
+        catch (SocketException ex)
         {
-            handle.Free();
+            return _XlatError(ex.SocketErrorCode);
+        }
+        catch (ObjectDisposedException)
+        {
+            return SOCKERR_INVALID;
         }
     }
 
-    public static int SocketRecvfrom(SocketT socket, IntPtr buffer, int length, int flags, IntPtr from, IntPtr fromLength)
+    public static int SocketConnect(Socket? socket, EndPoint? address)
     {
+        if (socket is null || address is null)
+            return SOCKERR_INVALID;
+
+        try
+        {
+            socket.Connect(address);
+            return SOCKERR_NONE;
+        }
+        catch (SocketException ex)
+        {
+            int errcode = _XlatError(ex.SocketErrorCode);
+            if (errcode != SOCKERR_NONE)
+                Tools.NetPrintf($"dirtynetps3: connect() failed (err={ex.SocketErrorCode})");
+            return errcode;
+        }
+        catch (ObjectDisposedException)
+        {
+            return SOCKERR_INVALID;
+        }
+    }
+
+    public static int SocketListen(Socket? socket, int backlog)
+    {
+        if (socket is null)
+            return SOCKERR_INVALID;
+
+        try
+        {
+            socket.Listen(backlog);
+            return SOCKERR_NONE;
+        }
+        catch (SocketException ex)
+        {
+            Tools.NetPrintf($"dirtynetps3: listen() failed (err={ex.SocketErrorCode})\n");
+            return _XlatError(ex.SocketErrorCode);
+        }
+        catch (ObjectDisposedException)
+        {
+            return SOCKERR_INVALID;
+        }
+    }
+
+    public static Socket? SocketAccept(Socket? socket, out IPEndPoint? address)
+    {
+        address = null;
+
+        if (socket is null || socket.SocketType != SocketType.Stream || socket.AddressFamily != AddressFamily.InterNetwork)
+            return null;
+
+        try
+        {
+            Socket incoming = socket.Accept();
+            incoming.Blocking = false;
+
+            address = incoming.RemoteEndPoint as IPEndPoint;
+
+            Socket? result = _SocketOpen(
+                incoming,
+                incoming.AddressFamily,
+                incoming.SocketType,
+                incoming.ProtocolType,
+                true);
+
+            if (result is null)
+            {
+                incoming.Dispose();
+                address = null;
+            }
+
+            return result;
+        }
+        catch (SocketException ex)
+        {
+            if (ex.SocketErrorCode != SocketError.WouldBlock)
+                Tools.NetPrintf($"dirtynetps3: accept() failed (err={ex.SocketErrorCode})");
+
+            return null;
+        }
+        catch (ObjectDisposedException)
+        {
+            return null;
+        }
+    }
+
+    public static int SocketSendto(Socket? socket, byte[] buffer, int length, int flags, EndPoint? address)
+    {
+        if (socket is null)
+            return SOCKERR_INVALID;
+
+        if (buffer is null || length < 0 || length > buffer.Length)
+            return SOCKERR_INVALID;
+
+        try
+        {
+            int result = address is null
+                ? socket.Send(buffer, 0, length, (SocketFlags)flags)
+                : socket.SendTo(buffer, 0, length, (SocketFlags)flags, address);
+
+            return result;
+        }
+        catch (SocketException ex)
+        {
+            return _XlatError(ex.SocketErrorCode);
+        }
+        catch (ObjectDisposedException)
+        {
+            return SOCKERR_INVALID;
+        }
+    }
+
+    public static int SocketSend(Socket? socket, byte[] buffer, int length, int flags)
+    {
+        return SocketSendto(socket, buffer, length, flags, null);
+    }
+
+    public static int SocketRecvfrom(Socket? socket, byte[] buffer, int length, int flags, EndPoint? from)
+    {
+        if (socket == null)
+            return SOCKERR_INVALID;
+
+        if (buffer is null || length < 0 || length > buffer.Length)
+            return SOCKERR_INVALID;
+
         int iRecv = -1;
-
-        if (socket.type == SOCK_STREAM)
+        if (socket.SocketType == SocketType.Stream)
         {
-            if (socket.socket == INVALID_SOCKET)
-                return SOCKERR_INVALID;
-
-            iRecv = _SocketRecvfrom(socket, buffer, length, from, fromLength);
+            iRecv = _SocketRecvfrom(socket, buffer, length, from);
             if (iRecv < 0 && iRecv != unchecked((int)0x80010223))//or again
                 Tools.NetPrintf($"dirtynetps3: _SocketRecvfrom() failed (err={iRecv})\n\n");
         }
 
-        return iRecv == 0 ? SOCKERR_CLOSED : _XlatError(iRecv);
+        return iRecv == 0 ? SOCKERR_CLOSED : iRecv;
     }
 
-    public static int SocketRecv(SocketT socket, IntPtr buffer, int length, int flags)
+    public static int SocketRecv(Socket? socket, byte[] buffer, int length, int flags)
     {
-        return SocketRecvfrom(socket, buffer, length, flags, IntPtr.Zero, IntPtr.Zero);
+        return SocketRecvfrom(socket, buffer, length, flags, null);
     }
 
-    public static int SocketRecv(SocketT socket, byte[] buffer, int length, int flags)
-    {
-        GCHandle handle = GCHandle.Alloc(buffer, GCHandleType.Pinned);
-        try
-        {
-            return SocketRecvfrom(
-                socket,
-                handle.AddrOfPinnedObject(),
-                length,
-                flags,
-                IntPtr.Zero,
-                IntPtr.Zero
-            );
-        }
-        finally
-        {
-            handle.Free();
-        }
-    }
-
-    public static int SocketInfo(SocketT socket, int info, int data, IntPtr buffer, int length)
+    public static int SocketInfo(Socket? socket, int info, int data, IntPtr buffer, int length)
     {
         if (buffer != IntPtr.Zero && length > 0)
         {
@@ -433,59 +452,46 @@ public static class DirtyNetPS3
                 Marshal.WriteByte(buffer, i, 0);
         }
 
-        if (socket.socket == INVALID_SOCKET)
+        if (socket is null)
             return -2;
 
         if (info == Tools.FourCC("stat"))
         {
-            if (socket.opened == 0)
+            int opened = 0;
+            try
             {
-                PollFd pollFd = new()
+                if (socket.Poll(0, SelectMode.SelectWrite) || socket.Poll(0, SelectMode.SelectError))
                 {
-                    fd = socket.socket,
-                    events = (short)(POLLOUT | (OperatingSystem.IsWindows() ? 0 : POLLERR)),
-                    revents = 0
-                };
+                    int error = (int)socket.GetSocketOption(
+                        SocketOptionLevel.Socket,
+                        SocketOptionName.Error)!;
 
-                IntPtr p = Marshal.AllocHGlobal(Marshal.SizeOf<PollFd>());
-                try
+                    opened = error == 0 ? 1 : -1;
+                }
+
+                if (opened > 0)
                 {
-                    Marshal.StructureToPtr(pollFd, p, false);
-                    int result = gPlatformSocketAPICallbacks.poll(p, 1, 0);
-                    pollFd = Marshal.PtrToStructure<PollFd>(p);
-
-                    if (result != 0)
+                    try
                     {
-                        if (result == SOCKET_ERROR || (pollFd.revents & POLLERR) != 0)
-                            socket.opened = -1;
-
-                        if ((pollFd.revents & POLLOUT) != 0)
-                            socket.opened = 1;
+                        if (socket.RemoteEndPoint is null)
+                            opened = -1;
+                    }
+                    catch (SocketException)
+                    {
+                        opened = -1;
                     }
                 }
-                finally
-                {
-                    Marshal.FreeHGlobal(p);
-                }
             }
-
-            if (socket.opened > 0)
+            catch (SocketException)
             {
-                const int bufferSize = 128; // sizeof(sockaddr) + some safe space
-                IntPtr peer = Marshal.AllocHGlobal(bufferSize);
-                try
-                {
-                    int peerLength = bufferSize;
-                    if (gPlatformSocketAPICallbacks.getpeername(socket.socket, peer, ref peerLength) < 0)
-                        socket.opened = -1;
-                }
-                finally
-                {
-                    Marshal.FreeHGlobal(peer);
-                }
+                return -1;
+            }
+            catch (ObjectDisposedException)
+            {
+                return -1;
             }
 
-            return socket.opened;
+            return opened;
         }
 
         return -1;
@@ -524,7 +530,9 @@ public static class DirtyNetPS3
 
         try
         {
-            IPAddress[] addresses = Dns.GetHostAddresses(host.Name);
+            // We use our wrapped instead of the "Dns.GetHostAddresses(host.Name)" because
+            //     we need to connect to Revora instead of the old standard dead EA servers
+            IPAddress[] addresses = GetHostByNameWrapper(host.Name);
             IPAddress? ipv4 = Array.Find(addresses, a => a.AddressFamily == AddressFamily.InterNetwork);
             if (ipv4 is not null)
             {
@@ -546,5 +554,54 @@ public static class DirtyNetPS3
         }
 
         return host;
+    }
+
+    private static IPAddress[] GetHostByNameWrapper(string name)
+    {
+        string res = name;
+
+        if (_matches(name, "servserv.generals.ea.com", "na.llnet.eadownloads.ea.com"))
+            res = "http.server.cnc-online.net";
+        else if (_matches(name, "bfme.fesl.ea.com", "bfme2.fesl.ea.com",
+            "bfme2-ep1-pc.fesl.ea.com", "cnc3-pc.fesl.ea.com",
+            "cnc3-ep1-pc.fesl.ea.com", "cncra3-pc.fesl.ea.com"))
+            res = "login.server.cnc-online.net";
+        else if (_matches(name, "gpcm.gamespy.com"))
+            res = "gpcm.server.cnc-online.net";
+        else if (_matches(name, "peerchat.gamespy.com"))
+            res = "peerchat.server.cnc-online.net";
+        else if (_matches(name, "lotrbme.available.gamespy.com", "lotrbme.master.gamespy.com",
+            "lotrbme.ms13.gamespy.com", "lotrbme2r.available.gamespy.com",
+            "lotrbme2r.master.gamespy.com", "lotrbme2r.ms9.gamespy.com",
+            "ccgenerals.ms19.gamespy.com", "ccgenzh.ms6.gamespy.com",
+            "cc3tibwars.available.gamespy.com", "cc3tibwars.master.gamespy.com",
+            "cc3tibwars.ms17.gamespy.com", "cc3xp1.available.gamespy.com",
+            "cc3xp1.master.gamespy.com", "cc3xp1.ms18.gamespy.com",
+            "redalert3pc.available.gamespy.com", "redalert3pc.master.gamespy.com",
+            "redalert3pc.ms1.gamespy.com", "master.gamespy.com"))
+            res = "master.server.cnc-online.net";
+        else if (_matches(name, "redalert3pc.natneg1.gamespy.com",
+            "redalert3pc.natneg2.gamespy.com", "redalert3pc.natneg3.gamespy.com"))
+            res = "natneg.server.cnc-online.net";
+        else if (_matches(name, "lotrbme.gamestats.gamespy.com",
+            "lotrbme2r.gamestats.gamespy.com", "gamestats.gamespy.com"))
+            res = "gamestats.server.cnc-online.net";
+        else if (_matches(name, "lotrbfme.arenasdk.gamespy.com",
+            "arenasdk.gamespy.com", "launch.gamespyarcade.com",
+            "www.gamespy.com", "ingamead.gamespy.com"))
+            res = "server.cnc-online.net";
+
+        if (res != name)
+            Tools.NetPrintf($"Changed host \"{name}\" to \"{res}\"");
+
+        return Dns.GetHostAddresses(res);
+    }
+
+    private static bool _matches(string name, params string[] values)
+    {
+        foreach (string value in values)
+            if (string.Equals(name, value, StringComparison.Ordinal))
+                return true;
+        return false;
     }
 }
