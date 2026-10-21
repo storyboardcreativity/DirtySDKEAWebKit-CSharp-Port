@@ -25,26 +25,10 @@ namespace DirtySDKEAWebKit
                 stack[i] = new MemInfo();
 
             // C: {'dflt', NULL}
-            stack[0].Group = FourCC("dflt");
+            stack[0].Group = Tools.FourCC("dflt");
             stack[0].UserData = IntPtr.Zero;
 
             return stack;
-        }
-
-        public static int FourCC(string value)
-        {
-            ArgumentNullException.ThrowIfNull(value);
-
-            if (value.Length != 4)
-                throw new ArgumentException(
-                    "FourCC must contain exactly four characters.",
-                    nameof(value));
-
-            return unchecked(
-                (value[0] << 24) |
-                (value[1] << 16) |
-                (value[2] << 8) |
-                value[3]);
         }
 
         public static void DirtyMemGroupEnter(int group, IntPtr userData)

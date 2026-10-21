@@ -15,11 +15,11 @@ namespace DirtySDKEAWebKit
         public int SO_NBIO { get; }
 
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-        public delegate int AcceptDelegate(int fd, IntPtr addr, ref int len);
+        public delegate nint AcceptDelegate(nint fd, IntPtr addr, ref int len);
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-        public delegate int BindDelegate(int fd, IntPtr addr, int len);
+        public delegate int BindDelegate(nint fd, IntPtr addr, int len);
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-        public delegate int ConnectDelegate(int fd, IntPtr addr, int len);
+        public delegate int ConnectDelegate(nint fd, IntPtr addr, int len);
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
         public delegate IntPtr GetHostByAddrDelegate(IntPtr addr, int len, int type);
         [UnmanagedFunctionPointer(CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
@@ -27,27 +27,27 @@ namespace DirtySDKEAWebKit
         [UnmanagedFunctionPointer(CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
         public delegate int DnsLookupDelegate(string hostname, IntPtr unk, IntPtr unkSema, IntPtr unkAddr);
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-        public delegate int GetPeerNameDelegate(int fd, IntPtr addr, ref int len);
+        public delegate int GetPeerNameDelegate(nint fd, IntPtr addr, ref int len);
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-        public delegate int GetSockOptDelegate(int fd, int level, int opt, IntPtr value, ref int len);
+        public delegate int GetSockOptDelegate(nint fd, int level, int opt, IntPtr value, ref int len);
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-        public delegate int ListenDelegate(int fd, int backlog);
+        public delegate int ListenDelegate(nint fd, int backlog);
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-        public delegate nint RecvDelegate(int fd, IntPtr buf, nuint len, int flags);
+        public delegate nint RecvDelegate(nint fd, IntPtr buf, nuint len, int flags);
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-        public delegate nint RecvFromDelegate(int fd, IntPtr buf, nuint len, int flags, IntPtr addr, ref int addrLen);
+        public delegate nint RecvFromDelegate(nint fd, IntPtr buf, nuint len, int flags, IntPtr addr, ref int addrLen);
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-        public delegate nint SendDelegate(int fd, IntPtr buf, nuint len, int flags);
+        public delegate nint SendDelegate(nint fd, IntPtr buf, nuint len, int flags);
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-        public delegate nint SendToDelegate(int fd, IntPtr buf, nuint len, int flags, IntPtr addr, int addrLen);
+        public delegate nint SendToDelegate(nint fd, IntPtr buf, nuint len, int flags, IntPtr addr, int addrLen);
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-        public delegate int SetSockOptDelegate(int fd, int level, int opt, IntPtr value, int len);
+        public delegate int SetSockOptDelegate(nint fd, int level, int opt, IntPtr value, int len);
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-        public delegate int ShutdownDelegate(int fd, int how);
+        public delegate int ShutdownDelegate(nint fd, int how);
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-        public delegate int SocketDelegate(int domain, int type, int protocol);
+        public delegate nint SocketDelegate(int domain, int type, int protocol);
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-        public delegate int CloseDelegate(int fd);
+        public delegate int CloseDelegate(nint fd);
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
         public delegate int PollDelegate(IntPtr fds, nuint count, int timeout);
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
@@ -78,15 +78,14 @@ namespace DirtySDKEAWebKit
             SO_NBIO = soNbio;
             gethostbyname = GetHostByNameWrapper;
             setsockopt = SetSockOptWrapper;
-
+            close = NativeClose;
+            
             if (Windows)
             {
-                close = WinClose;
                 poll = NativePollWindows;
             }
             else if (OperatingSystem.IsLinux())
             {
-                close = UnixClose;
                 poll = NativePollLinux;
             }
             else
@@ -120,7 +119,7 @@ namespace DirtySDKEAWebKit
             return -1;
         }
 
-        public int SetSockOptWrapper(int fd, int level, int opt, IntPtr value, int len)
+        public int SetSockOptWrapper(nint fd, int level, int opt, IntPtr value, int len)
         {
             if (opt == SO_NBIO)
             {
@@ -140,20 +139,25 @@ namespace DirtySDKEAWebKit
             return NativeSetSockOpt(fd, level, opt, value, len);
         }
 
-        public static nint SendWrapper(int fd, IntPtr buf, nuint len, int flags)
+        public static nint SendWrapper(nint fd, IntPtr buf, nuint len, int flags)
         {
             Debug.WriteLine($"Sending {len} bytes to socket 0x{fd:X}:");
             DebugBuffer(buf, len);
             return NativeSend(fd, buf, len, flags);
         }
 
-        public static nint RecvWrapper(int fd, IntPtr buf, nuint len, int flags)
+        public static nint RecvWrapper(nint fd, IntPtr buf, nuint len, int flags)
         {
             nint size = NativeRecv(fd, buf, len, flags);
             Debug.WriteLine($"Received {size} bytes from socket 0x{fd:X}:");
             DebugBuffer(buf, size > 0 ? (nuint)size : 0);
             return size;
         }
+
+        private static int NativeClose(nint fd)
+            => Windows
+                ? WinClose((nuint)fd)
+                : UnixClose((int)fd);
 
         public static IntPtr GetHostByNameWrapper(string name)
         {
@@ -216,46 +220,49 @@ namespace DirtySDKEAWebKit
                 return;
         }
 
-        private static int NativeAccept(int fd, IntPtr a, ref int l) => Windows ? WinAccept(fd, a, ref l) : UnixAccept(fd, a, ref l);
-        private static int NativeBind(int fd, IntPtr a, int l) => Windows ? WinBind(fd, a, l) : UnixBind(fd, a, l);
-        private static int NativeConnect(int fd, IntPtr a, int l) => Windows ? WinConnect(fd, a, l) : UnixConnect(fd, a, l);
+        private static UIntPtr ToSocket(nint fd) => (UIntPtr)(nuint)fd;
+        private static nint FromSocket(UIntPtr fd) => (nint)(nuint)fd;
+
+        private static nint NativeAccept(nint fd, IntPtr a, ref int l) => Windows ? FromSocket(WinAccept(ToSocket(fd), a, ref l)) : UnixAccept((int)fd, a, ref l);
+        private static int NativeBind(nint fd, IntPtr a, int l) => Windows ? WinBind(ToSocket(fd), a, l) : UnixBind((int)fd, a, l);
+        private static int NativeConnect(nint fd, IntPtr a, int l) => Windows ? WinConnect(ToSocket(fd), a, l) : UnixConnect((int)fd, a, l);
         private static IntPtr NativeGetHostByAddr(IntPtr a, int l, int t) => Windows ? WinGetHostByAddr(a, l, t) : UnixGetHostByAddr(a, l, t);
         private static IntPtr NativeGetHostByName(string n) => Windows ? WinGetHostByName(n) : UnixGetHostByName(n);
-        private static int NativeGetPeerName(int fd, IntPtr a, ref int l) => Windows ? WinGetPeerName(fd, a, ref l) : UnixGetPeerName(fd, a, ref l);
-        private static int NativeGetSockOpt(int fd, int l, int o, IntPtr v, ref int n) => Windows ? WinGetSockOpt(fd, l, o, v, ref n) : UnixGetSockOpt(fd, l, o, v, ref n);
-        private static int NativeListen(int fd, int b) => Windows ? WinListen(fd, b) : UnixListen(fd, b);
-        private static nint NativeRecv(int fd, IntPtr b, nuint n, int f) => Windows ? WinRecv(fd, b, checked((int)n), f) : UnixRecv(fd, b, n, f);
-        private static nint NativeRecvFrom(int fd, IntPtr b, nuint n, int f, IntPtr a, ref int l) => Windows ? WinRecvFrom(fd, b, checked((int)n), f, a, ref l) : UnixRecvFrom(fd, b, n, f, a, ref l);
-        private static nint NativeSend(int fd, IntPtr b, nuint n, int f) => Windows ? WinSend(fd, b, checked((int)n), f) : UnixSend(fd, b, n, f);
-        private static nint NativeSendTo(int fd, IntPtr b, nuint n, int f, IntPtr a, int l) => Windows ? WinSendTo(fd, b, checked((int)n), f, a, l) : UnixSendTo(fd, b, n, f, a, l);
-        private static int NativeSetSockOpt(int fd, int l, int o, IntPtr v, int n) => Windows ? WinSetSockOpt(fd, l, o, v, n) : UnixSetSockOpt(fd, l, o, v, n);
-        private static int NativeShutdown(int fd, int h) => Windows ? WinShutdown(fd, h) : UnixShutdown(fd, h);
-        private static int NativeSocket(int d, int t, int p) => Windows ? WinSocket(d, t, p) : UnixSocket(d, t, p);
-        private static int IoctlSocket(int fd, int cmd, ref uint mode) => WinIoctlSocket(fd, cmd, ref mode);
-        private static int Fcntl(int fd, int cmd, int val) => UnixFcntl(fd, cmd, val);
+        private static int NativeGetPeerName(nint fd, IntPtr a, ref int l) => Windows ? WinGetPeerName(ToSocket(fd), a, ref l) : UnixGetPeerName((int)fd, a, ref l);
+        private static int NativeGetSockOpt(nint fd, int l, int o, IntPtr v, ref int n) => Windows ? WinGetSockOpt(ToSocket(fd), l, o, v, ref n) : UnixGetSockOpt((int)fd, l, o, v, ref n);
+        private static int NativeListen(nint fd, int b) => Windows ? WinListen(ToSocket(fd), b) : UnixListen((int)fd, b);
+        private static nint NativeRecv(nint fd, IntPtr b, nuint n, int f) => Windows ? WinRecv(ToSocket(fd), b, checked((int)n), f) : UnixRecv((int)fd, b, n, f);
+        private static nint NativeRecvFrom(nint fd, IntPtr b, nuint n, int f, IntPtr a, ref int l) => Windows ? WinRecvFrom(ToSocket(fd), b, checked((int)n), f, a, ref l) : UnixRecvFrom((int)fd, b, n, f, a, ref l);
+        private static nint NativeSend(nint fd, IntPtr b, nuint n, int f) => Windows ? WinSend(ToSocket(fd), b, checked((int)n), f) : UnixSend((int)fd, b, n, f);
+        private static nint NativeSendTo(nint fd, IntPtr b, nuint n, int f, IntPtr a, int l) => Windows ? WinSendTo(ToSocket(fd), b, checked((int)n), f, a, l) : UnixSendTo((int)fd, b, n, f, a, l);
+        private static int NativeSetSockOpt(nint fd, int l, int o, IntPtr v, int n) => Windows ? WinSetSockOpt(ToSocket(fd), l, o, v, n) : UnixSetSockOpt((int)fd, l, o, v, n);
+        private static int NativeShutdown(nint fd, int h) => Windows ? WinShutdown(ToSocket(fd), h) : UnixShutdown((int)fd, h);
+        private static nint NativeSocket(int d, int t, int p) => Windows ? FromSocket(WinSocket(d, t, p)) : UnixSocket(d, t, p);
+        private static int IoctlSocket(nint fd, int cmd, ref uint mode) => WinIoctlSocket(ToSocket(fd), cmd, ref mode);
+        private static int Fcntl(nint fd, int cmd, int val) => UnixFcntl((int)fd, cmd, val);
         private static int WSAGetLastError() => WinWSAGetLastError();
 
         private const string Ws2 = "ws2_32.dll";
         private const string LibC = "libc";
 
-        [DllImport(Ws2, EntryPoint = "accept")] private static extern int WinAccept(int fd, IntPtr a, ref int l);
-        [DllImport(Ws2, EntryPoint = "bind")] private static extern int WinBind(int fd, IntPtr a, int l);
-        [DllImport(Ws2, EntryPoint = "connect")] private static extern int WinConnect(int fd, IntPtr a, int l);
+        [DllImport(Ws2, EntryPoint = "accept")] private static extern nuint WinAccept(nuint fd, IntPtr a, ref int l);
+        [DllImport(Ws2, EntryPoint = "bind")] private static extern int WinBind(nuint fd, IntPtr a, int l);
+        [DllImport(Ws2, EntryPoint = "connect")] private static extern int WinConnect(nuint fd, IntPtr a, int l);
         [DllImport(Ws2, EntryPoint = "gethostbyaddr")] private static extern IntPtr WinGetHostByAddr(IntPtr a, int l, int t);
         [DllImport(Ws2, EntryPoint = "gethostbyname", CharSet = CharSet.Ansi)] private static extern IntPtr WinGetHostByName(string n);
-        [DllImport(Ws2, EntryPoint = "getpeername")] private static extern int WinGetPeerName(int fd, IntPtr a, ref int l);
-        [DllImport(Ws2, EntryPoint = "getsockopt")] private static extern int WinGetSockOpt(int fd, int l, int o, IntPtr v, ref int n);
-        [DllImport(Ws2, EntryPoint = "listen")] private static extern int WinListen(int fd, int b);
-        [DllImport(Ws2, EntryPoint = "recv")] private static extern int WinRecv(int fd, IntPtr b, int n, int f);
-        [DllImport(Ws2, EntryPoint = "recvfrom")] private static extern int WinRecvFrom(int fd, IntPtr b, int n, int f, IntPtr a, ref int l);
-        [DllImport(Ws2, EntryPoint = "send")] private static extern int WinSend(int fd, IntPtr b, int n, int f);
-        [DllImport(Ws2, EntryPoint = "sendto")] private static extern int WinSendTo(int fd, IntPtr b, int n, int f, IntPtr a, int l);
-        [DllImport(Ws2, EntryPoint = "setsockopt")] private static extern int WinSetSockOpt(int fd, int l, int o, IntPtr v, int n);
-        [DllImport(Ws2, EntryPoint = "shutdown")] private static extern int WinShutdown(int fd, int h);
-        [DllImport(Ws2, EntryPoint = "socket")] private static extern int WinSocket(int d, int t, int p);
-        [DllImport(Ws2, EntryPoint = "closesocket")] private static extern int WinClose(int fd);
+        [DllImport(Ws2, EntryPoint = "getpeername")] private static extern int WinGetPeerName(nuint fd, IntPtr a, ref int l);
+        [DllImport(Ws2, EntryPoint = "getsockopt")] private static extern int WinGetSockOpt(nuint fd, int l, int o, IntPtr v, ref int n);
+        [DllImport(Ws2, EntryPoint = "listen")] private static extern int WinListen(nuint fd, int b);
+        [DllImport(Ws2, EntryPoint = "recv")] private static extern int WinRecv(nuint fd, IntPtr b, int n, int f);
+        [DllImport(Ws2, EntryPoint = "recvfrom")] private static extern int WinRecvFrom(nuint fd, IntPtr b, int n, int f, IntPtr a, ref int l);
+        [DllImport(Ws2, EntryPoint = "send")] private static extern int WinSend(nuint fd, IntPtr b, int n, int f);
+        [DllImport(Ws2, EntryPoint = "sendto")] private static extern int WinSendTo(nuint fd, IntPtr b, int n, int f, IntPtr a, int l);
+        [DllImport(Ws2, EntryPoint = "setsockopt")] private static extern int WinSetSockOpt(nuint fd, int l, int o, IntPtr v, int n);
+        [DllImport(Ws2, EntryPoint = "shutdown")] private static extern int WinShutdown(nuint fd, int h);
+        [DllImport(Ws2, EntryPoint = "socket")] private static extern nuint WinSocket(int d, int t, int p);
+        [DllImport(Ws2, EntryPoint = "closesocket")] private static extern int WinClose(nuint fd);
         [DllImport(Ws2, EntryPoint = "WSAPoll")] private static extern int WinPoll(IntPtr fds, uint n, int t);
-        [DllImport(Ws2, EntryPoint = "ioctlsocket")] private static extern int WinIoctlSocket(int fd, int cmd, ref uint mode);
+        [DllImport(Ws2, EntryPoint = "ioctlsocket")] private static extern int WinIoctlSocket(nuint fd, int cmd, ref uint mode);
         [DllImport(Ws2, EntryPoint = "WSAGetLastError")] private static extern int WinWSAGetLastError();
 
         [DllImport(LibC, EntryPoint = "accept")] private static extern int UnixAccept(int fd, IntPtr a, ref int l);

@@ -20,5 +20,21 @@ namespace DirtySDKEAWebKit
         {
             Console.Write(message);
         }
+
+        public static int FourCC(string value)
+        {
+            ArgumentNullException.ThrowIfNull(value);
+
+            if (value.Length != 4)
+                throw new ArgumentException(
+                    "FourCC must contain exactly four characters.",
+                    nameof(value));
+
+            return unchecked(
+                (value[0] << 24) |
+                (value[1] << 16) |
+                (value[2] << 8) |
+                value[3]);
+        }
     }
 }

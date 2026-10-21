@@ -3,15 +3,12 @@ using System;
 
 namespace DirtySDKEAWebKit
 {
-    public sealed class CryptMD5T
+    public class CryptMD5
     {
-        public readonly byte[] strData = new byte[64 + 8];
-        public uint uCount;
-        public readonly uint[] uRegs = new uint[4];
-    }
+        public readonly byte[] _strData = new byte[64 + 8];
+        public uint _uCount;
+        public readonly uint[] _uRegs = new uint[4];
 
-    public static class CryptMD5
-    {
         public const int MD5_BINARY_OUT = 16;
         public const int MD5_STRING_OUT = 33;
         private const uint A0 = 0x67452301;
@@ -61,34 +58,38 @@ namespace DirtySDKEAWebKit
             return (value << bits) | (value >> (32 - bits));
         }
 
-        public static void CryptMD5Init(CryptMD5T pContext)
+        public void Init()
         {
-            ArgumentNullException.ThrowIfNull(pContext);
-
-            pContext.uCount = 0;
-
-            pContext.uRegs[0] = A0;
-            pContext.uRegs[1] = B0;
-            pContext.uRegs[2] = C0;
-            pContext.uRegs[3] = D0;
+            _uCount = 0;
+            _uRegs[0] = A0;
+            _uRegs[1] = B0;
+            _uRegs[2] = C0;
+            _uRegs[3] = D0;
         }
 
-        public static void CryptMD5Update(CryptMD5T pContext, byte[] pBuffer, int iLength)
+        public void Update(byte[] pBuffer, int iLength)
         {
-            ArgumentNullException.ThrowIfNull(pContext);
+            Update(pBuffer, 0, iLength);
+        }
+
+        public void Update(byte[] pBuffer, int bufferOffset, int iLength)
+        {
             ArgumentNullException.ThrowIfNull(pBuffer);
+
+            if (bufferOffset < 0 || bufferOffset > pBuffer.Length)
+                throw new ArgumentOutOfRangeException(nameof(bufferOffset));
 
             if (iLength < 0)
             {
                 iLength = 0;
 
-                while (iLength < pBuffer.Length &&
-                    pBuffer[iLength] != 0)
+                while (bufferOffset + iLength < pBuffer.Length &&
+                    pBuffer[bufferOffset + iLength] != 0)
                 {
                     iLength++;
                 }
 
-                if (iLength == pBuffer.Length)
+                if (bufferOffset + iLength == pBuffer.Length)
                 {
                     throw new ArgumentException(
                         "Не найден завершающий нулевой байт.",
@@ -96,22 +97,20 @@ namespace DirtySDKEAWebKit
                 }
             }
 
-            if (iLength > pBuffer.Length)
-            {
+            if (iLength > pBuffer.Length - bufferOffset)
                 throw new ArgumentOutOfRangeException(nameof(iLength));
-            }
 
             if (iLength == 0)
                 return;
 
-            uint uCount = pContext.uCount & 63;
+            uint uCount = _uCount & 63;
 
             unchecked
             {
-                pContext.uCount += (uint)iLength;
+                _uCount += (uint)iLength;
             }
 
-            int offset = 0;
+            int offset = bufferOffset;
 
             if (uCount > 0)
             {
@@ -119,28 +118,21 @@ namespace DirtySDKEAWebKit
 
                 if (iLength < uAdd)
                 {
-                    Array.Copy(
-                        pBuffer, offset,
-                        pContext.strData, (int)uCount,
-                        iLength);
-
+                    Array.Copy(pBuffer, offset, _strData, (int)uCount, iLength);
                     return;
                 }
 
-                Array.Copy(
-                    pBuffer, offset,
-                    pContext.strData, (int)uCount,
-                    uAdd);
+                Array.Copy(pBuffer, offset, _strData, (int)uCount, uAdd);
 
                 offset += uAdd;
                 iLength -= uAdd;
 
-                CryptMD5Transform(pContext, pContext.strData, 0);
+                Transform(_strData, 0);
             }
 
             while (iLength >= 64)
             {
-                CryptMD5Transform(pContext, pBuffer, offset);
+                Transform(pBuffer, offset);
 
                 offset += 64;
                 iLength -= 64;
@@ -148,14 +140,28 @@ namespace DirtySDKEAWebKit
 
             if (iLength > 0)
             {
-                Array.Copy(
-                    pBuffer, offset,
-                    pContext.strData, 0,
-                    iLength);
+                Array.Copy(pBuffer, offset, _strData, 0, iLength);
             }
         }
 
-        private static void CryptMD5Transform(CryptMD5T pContext, byte[] pBlock, int offset)
+        public void CopyFrom(CryptMD5 source)
+        {
+            ArgumentNullException.ThrowIfNull(source);
+
+            _uCount = source._uCount;
+
+            Array.Copy(source._strData, _strData, _strData.Length);
+            Array.Copy(source._uRegs, _uRegs, _uRegs.Length);
+        }
+
+        public CryptMD5 Clone()
+        {
+            CryptMD5 copy = new CryptMD5();
+            copy.CopyFrom(this);
+            return copy;
+        }
+
+        private void Transform(byte[] pBlock, int offset)
         {
             Span<uint> words = stackalloc uint[16];
 
@@ -170,10 +176,10 @@ namespace DirtySDKEAWebKit
                     ((uint)pBlock[j + 3] << 24);
             }
 
-            uint a = pContext.uRegs[0];
-            uint b = pContext.uRegs[1];
-            uint c = pContext.uRegs[2];
-            uint d = pContext.uRegs[3];
+            uint a = _uRegs[0];
+            uint b = _uRegs[1];
+            uint c = _uRegs[2];
+            uint d = _uRegs[3];
 
             unchecked
             {
@@ -217,71 +223,66 @@ namespace DirtySDKEAWebKit
                     a = temp;
                 }
 
-                pContext.uRegs[0] += a;
-                pContext.uRegs[1] += b;
-                pContext.uRegs[2] += c;
-                pContext.uRegs[3] += d;
+                _uRegs[0] += a;
+                _uRegs[1] += b;
+                _uRegs[2] += c;
+                _uRegs[3] += d;
             }
         }
 
-        public static void CryptMD5Final(CryptMD5T pContext, byte[] pBuffer, int iLength)
+        public void Final(byte[] pBuffer, int iLength)
         {
-            ArgumentNullException.ThrowIfNull(pContext);
             ArgumentNullException.ThrowIfNull(pBuffer);
 
-            int uIndex = (int)(pContext.uCount & 63);
+            int uIndex = (int)(_uCount & 63);
 
-            pContext.strData[uIndex++] = 0x80;
+            _strData[uIndex++] = 0x80;
 
             if (uIndex > 56)
             {
                 for (int i = 0; i < 8; i++)
                 {
-                    pContext.strData[uIndex + i] = 0;
+                    _strData[uIndex + i] = 0;
                 }
 
-                CryptMD5Transform(pContext, pContext.strData, 0);
+                Transform(_strData, 0);
                 uIndex = 0;
             }
 
-            pContext.strData[uIndex + 0] = 0;
-            pContext.strData[uIndex + 1] = 0;
-            pContext.strData[uIndex + 2] = 0;
+            _strData[uIndex + 0] = 0;
+            _strData[uIndex + 1] = 0;
+            _strData[uIndex + 2] = 0;
 
             int uZero = (uIndex + 3) >> 2;
             int zeroOffset = uZero * 4;
 
-            Array.Clear(
-                pContext.strData,
-                zeroOffset,
-                64 - zeroOffset);
+            Array.Clear(_strData, zeroOffset, 64 - zeroOffset);
 
             unchecked
             {
-                uint count = pContext.uCount;
-
-                pContext.strData[56] = (byte)(count << 3);
-                pContext.strData[57] = (byte)(count >> 5);
-                pContext.strData[58] = (byte)(count >> 13);
-                pContext.strData[59] = (byte)(count >> 21);
-                pContext.strData[60] = (byte)(count >> 29);
+                uint count = _uCount;
+                _strData[56] = (byte)(count << 3);
+                _strData[57] = (byte)(count >> 5);
+                _strData[58] = (byte)(count >> 13);
+                _strData[59] = (byte)(count >> 21);
+                _strData[60] = (byte)(count >> 29);
             }
 
-            CryptMD5Transform(pContext, pContext.strData, 0);
+            Transform(_strData, 0);
 
             if (OperatingSystem.IsLinux())
             {
                 if (iLength == MD5_BINARY_OUT / 2)
                 {
                     EnsureOutputLength(pBuffer, iLength);
-                    WriteBinary(pContext, pBuffer, 8);
+                    WriteBinary(pBuffer, 8);
                     return;
                 }
 
                 if (iLength == MD5_BINARY_OUT)
                 {
                     EnsureOutputLength(pBuffer, iLength);
-                    WriteBinary(pContext, pBuffer, 16);
+                    WriteBinary(pBuffer, 16);
                     return;
                 }
             }
@@ -299,7 +300,7 @@ namespace DirtySDKEAWebKit
             {
                 if ((uIndex & 3) == 0)
                 {
-                    uData = pContext.uRegs[uIndex >> 2];
+                    uData = _uRegs[uIndex >> 2];
                 }
 
                 if (iLength >= MD5_STRING_OUT)
@@ -324,13 +325,13 @@ namespace DirtySDKEAWebKit
             }
         }
 
-        private static void WriteBinary(CryptMD5T pContext, byte[] output, int count)
+        private void WriteBinary(byte[] output, int count)
         {
             int index = 0;
 
             for (int i = 0; i < 4 && index < count; i++)
             {
-                uint value = pContext.uRegs[i];
+                uint value = _uRegs[i];
 
                 for (int j = 0; j < 4 && index < count; j++)
                 {

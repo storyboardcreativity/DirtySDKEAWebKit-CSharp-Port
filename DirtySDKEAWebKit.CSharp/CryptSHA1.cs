@@ -157,6 +157,19 @@ namespace DirtySDKEAWebKit
             return hash;
         }
 
+        public CryptSHA1 Clone()
+        {
+            CryptSHA1 copy = new CryptSHA1();
+
+            copy.uCount = uCount;
+            copy.uPartialCount = uPartialCount;
+
+            Array.Copy(H, copy.H, H.Length);
+            Array.Copy(strData, copy.strData, strData.Length);
+
+            return copy;
+        }
+
         private static uint RotateLeft(uint value, int bits)
         {
             return (value << bits) | (value >> (32 - bits));

@@ -14,34 +14,34 @@ public class DirtyMemTests
     {
         Assert.Equal(
             unchecked((int)0x64736F63),
-            DirtyMem.FourCC("dsoc"));
+            Tools.FourCC("dsoc"));
     }
 
     [Fact]
     public void FourCC_RejectsInvalidLength()
     {
-        Assert.Throws<ArgumentException>(() => DirtyMem.FourCC("abc"));
-        Assert.Throws<ArgumentException>(() => DirtyMem.FourCC("abcde"));
+        Assert.Throws<ArgumentException>(() => Tools.FourCC("abc"));
+        Assert.Throws<ArgumentException>(() => Tools.FourCC("abcde"));
     }
 
     [Fact]
     public void FourCC_RejectsNull()
     {
-        Assert.Throws<ArgumentNullException>(() => DirtyMem.FourCC(null!));
+        Assert.Throws<ArgumentNullException>(() => Tools.FourCC(null!));
     }
 
     [Fact]
     public void GroupQuery_ReturnsDefaultGroupInitially()
     {
         DirtyMem.DirtyMemGroupQuery(out int group, out IntPtr userData);
-        Assert.Equal(DirtyMem.FourCC("dflt"), group);
+        Assert.Equal(Tools.FourCC("dflt"), group);
         Assert.Equal(IntPtr.Zero, userData);
     }
 
     [Fact]
     public void GroupEnterAndQuery_ReturnEnteredValues()
     {
-        int group = DirtyMem.FourCC("test");
+        int group = Tools.FourCC("test");
         IntPtr userData = new IntPtr(1234);
 
         DirtyMem.DirtyMemGroupEnter(group, userData);
@@ -67,7 +67,7 @@ public class DirtyMemTests
             out int originalGroup, out IntPtr originalUserData);
 
         DirtyMem.DirtyMemGroupEnter(
-            DirtyMem.FourCC("test"), new IntPtr(42));
+            Tools.FourCC("test"), new IntPtr(42));
 
         DirtyMem.DirtyMemGroupLeave();
 
@@ -81,8 +81,8 @@ public class DirtyMemTests
     [Fact]
     public void GroupEnter_SupportsNestedGroups()
     {
-        int first = DirtyMem.FourCC("grp1");
-        int second = DirtyMem.FourCC("grp2");
+        int first = Tools.FourCC("grp1");
+        int second = Tools.FourCC("grp2");
 
         DirtyMem.DirtyMemGroupEnter(first, new IntPtr(1));
         try
@@ -116,7 +116,7 @@ public class DirtyMemTests
     [Fact]
     public void GroupEnter_OverflowDoesNotChangeCurrentGroup()
     {
-        int group = DirtyMem.FourCC("test");
+        int group = Tools.FourCC("test");
         DirtyMem.DirtyMemGroupEnter(group, IntPtr.Zero);
 
         try
@@ -124,13 +124,13 @@ public class DirtyMemTests
             for (int i = 0; i < 20; i++)
             {
                 DirtyMem.DirtyMemGroupEnter(
-                    DirtyMem.FourCC("more"), IntPtr.Zero);
+                    Tools.FourCC("more"), IntPtr.Zero);
             }
 
             DirtyMem.DirtyMemGroupQuery(
                 out int actualGroup, out _);
 
-            Assert.Equal(DirtyMem.FourCC("more"), actualGroup);
+            Assert.Equal(Tools.FourCC("more"), actualGroup);
         }
         finally
         {
@@ -153,14 +153,14 @@ public class DirtyMemTests
         DirtyMem.DirtyMemGroupQuery(
             out int group, out IntPtr userData);
 
-        Assert.Equal(DirtyMem.FourCC("dflt"), group);
+        Assert.Equal(Tools.FourCC("dflt"), group);
         Assert.Equal(IntPtr.Zero, userData);
     }
 
     [Fact]
     public void GroupQuery_ReturnsCurrentGroup()
     {
-        int expectedGroup = DirtyMem.FourCC("qry1");
+        int expectedGroup = Tools.FourCC("qry1");
         IntPtr expectedData = new IntPtr(987);
 
         DirtyMem.DirtyMemGroupEnter(expectedGroup, expectedData);
@@ -188,14 +188,14 @@ public class DirtyMemTests
     public void Alloc_AllocatesMemory()
     {
         IntPtr memory = DirtyMem.DirtyMemAlloc(
-            128, DirtyMem.FourCC("test"),
-            DirtyMem.FourCC("dflt"), IntPtr.Zero);
+            128, Tools.FourCC("test"),
+            Tools.FourCC("dflt"), IntPtr.Zero);
 
         Assert.NotEqual(IntPtr.Zero, memory);
 
         DirtyMem.DirtyMemFree(
-            memory, DirtyMem.FourCC("test"),
-            DirtyMem.FourCC("dflt"), IntPtr.Zero);
+            memory, Tools.FourCC("test"),
+            Tools.FourCC("dflt"), IntPtr.Zero);
     }
 
     [Theory]
@@ -265,8 +265,8 @@ public class DirtyMemTests
             DirtyMem.DirtyMemDebugAlloc(
                 new IntPtr(0x1234),
                 64,
-                DirtyMem.FourCC("mod1"),
-                DirtyMem.FourCC("grp1"),
+                Tools.FourCC("mod1"),
+                Tools.FourCC("grp1"),
                 IntPtr.Zero);
         }
         finally
@@ -296,8 +296,8 @@ public class DirtyMemTests
         {
             DirtyMem.DirtyMemDebugFree(
                 new IntPtr(0x1234), size,
-                DirtyMem.FourCC("mod1"),
-                DirtyMem.FourCC("grp1"),
+                Tools.FourCC("mod1"),
+                Tools.FourCC("grp1"),
                 IntPtr.Zero);
         }
         finally

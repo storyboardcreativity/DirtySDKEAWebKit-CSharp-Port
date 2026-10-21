@@ -42,11 +42,11 @@ public class CryptMD2Tests
     [InlineData(100)]
     public void Update_TracksBlockRemainder(int length)
     {
-        var context = new CryptMD2T();
+        var context = new CryptMD2();
         byte[] data = new byte[length];
 
-        CryptMD2.CryptMD2Init(context);
-        CryptMD2.CryptMD2Update(context, data, length);
+        context.Init();
+        context.Update(data, length);
 
         Assert.Equal(length % 16, context.iCount);
     }
@@ -55,15 +55,15 @@ public class CryptMD2Tests
     public void UpdateInChunks_MatchesSingleUpdate()
     {
         byte[] data = Enumerable.Range(0, 100).Select(i => (byte)i).ToArray();
-        var context = new CryptMD2T();
+        var context = new CryptMD2();
         byte[] actual = new byte[16];
 
-        CryptMD2.CryptMD2Init(context);
+        context.Init();
 
         for (int i = 0; i < data.Length; i += 7)
-            CryptMD2.CryptMD2Update(context, data, i, Math.Min(7, data.Length - i));
+            context.Update(data, i, Math.Min(7, data.Length - i));
 
-        CryptMD2.CryptMD2Final(context, actual, actual.Length);
+        context.Final(actual, actual.Length);
 
         Assert.Equal(CryptMD2.ComputeHash(data), actual);
     }
@@ -72,12 +72,12 @@ public class CryptMD2Tests
     public void Update_WithOffset_HashesOnlySelectedBytes()
     {
         byte[] data = Encoding.ASCII.GetBytes("XXabcYY");
-        var context = new CryptMD2T();
+        var context = new CryptMD2();
         byte[] actual = new byte[16];
 
-        CryptMD2.CryptMD2Init(context);
-        CryptMD2.CryptMD2Update(context, data, 2, 3);
-        CryptMD2.CryptMD2Final(context, actual, actual.Length);
+        context.Init();
+        context.Update(data, 2, 3);
+        context.Final(actual, actual.Length);
 
         Assert.Equal(CryptMD2.ComputeHash(Encoding.ASCII.GetBytes("abc")), actual);
     }
@@ -85,12 +85,12 @@ public class CryptMD2Tests
     [Fact]
     public void Final_WithShortOutput_DoesNotResetContext()
     {
-        var context = new CryptMD2T();
-        CryptMD2.CryptMD2Init(context);
-        CryptMD2.CryptMD2Update(context, Encoding.ASCII.GetBytes("abc"), 3);
+        var context = new CryptMD2();
+        context.Init();
+        context.Update(Encoding.ASCII.GetBytes("abc"), 3);
         int count = context.iCount;
 
-        CryptMD2.CryptMD2Final(context, new byte[15], 15);
+        context.Final(new byte[15], 15);
 
         Assert.Equal(count, context.iCount);
     }
@@ -98,10 +98,10 @@ public class CryptMD2Tests
     [Fact]
     public void Final_ResetsContext()
     {
-        var context = new CryptMD2T();
-        CryptMD2.CryptMD2Init(context);
-        CryptMD2.CryptMD2Update(context, Encoding.ASCII.GetBytes("abc"), 3);
-        CryptMD2.CryptMD2Final(context, new byte[16], 16);
+        var context = new CryptMD2();
+        context.Init();
+        context.Update(Encoding.ASCII.GetBytes("abc"), 3);
+        context.Final(new byte[16], 16);
 
         Assert.Equal(0, context.iCount);
         Assert.All(context.aState, b => Assert.Equal((byte)0, b));

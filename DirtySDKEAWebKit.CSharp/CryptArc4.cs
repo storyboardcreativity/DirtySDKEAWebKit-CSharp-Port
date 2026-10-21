@@ -2,13 +2,6 @@ using System;
 
 namespace DirtySDKEAWebKit
 {
-    public sealed class CryptArc4T
-    {
-        public readonly byte[] state = new byte[256];
-        public byte walk;
-        public byte swap;
-    }
-
     public sealed class CryptArc4
     {
         private readonly byte[] state = new byte[256];

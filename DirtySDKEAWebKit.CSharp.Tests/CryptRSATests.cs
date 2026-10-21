@@ -8,12 +8,11 @@ namespace DirtySDKEAWebKit.Tests;
 
 public class CryptRSATests
 {
-    private static CryptRSAT CreateState(byte[] exponent)
+    private static CryptRSA CreateState(byte[] exponent)
     {
-        var state = new CryptRSAT();
+        var state = new CryptRSA();
 
-        CryptRSA.CryptRSAInit(
-            state,
+        state.Init(
             new byte[] { 0x0C, 0xA1 }, 2, // n = 3233
             exponent, exponent.Length);
 
@@ -41,8 +40,7 @@ public class CryptRSATests
 
         state.EncryptBlock[0] = (byte)(input >> 8);
         state.EncryptBlock[1] = (byte)input;
-
-        CryptRSA.CryptRSAEncrypt(state);
+        state.Encrypt();
 
         Assert.Equal((byte)(expected >> 8), state.EncryptBlock[0]);
         Assert.Equal((byte)expected, state.EncryptBlock[1]);
@@ -51,11 +49,10 @@ public class CryptRSATests
     [Fact]
     public void Test_InitSignature_CopiesSignature()
     {
-        var state = new CryptRSAT();
+        var state = new CryptRSA();
         byte[] signature = { 1, 2, 3, 4 };
 
-        CryptRSA.CryptRSAInitSignature(
-            state, signature, signature.Length);
+        state.InitSignature(signature, signature.Length);
 
         Assert.Equal(signature, state.EncryptBlock[..signature.Length]);
     }
@@ -63,17 +60,16 @@ public class CryptRSATests
     [Fact]
     public void Test_InitMaster_WritesExpectedBlockStructure()
     {
-        var state = new CryptRSAT();
+        var state = new CryptRSA();
 
         // A six-byte modulus-sized block
-        CryptRSA.CryptRSAInit(
-            state,
+        state.Init(
             new byte[] { 1, 2, 3, 4, 5, 6 }, 6,
             new byte[] { 17 }, 1);
 
         byte[] master = { 0xAA, 0xBB };
 
-        CryptRSA.CryptRSAInitMaster(state, master, master.Length);
+        state.InitMaster(master, master.Length);
 
         Assert.Equal(0, state.EncryptBlock[0]);
         Assert.Equal(2, state.EncryptBlock[1]);
@@ -101,10 +97,9 @@ public class CryptRSATests
             _ => new[] { (byte)exponent }
         };
 
-        var state = new CryptRSAT();
+        var state = new CryptRSA();
 
-        CryptRSA.CryptRSAInit(
-            state,
+        state.Init(
             modulusBytes, modulusBytes.Length,
             exponentBytes, exponentBytes.Length);
 
@@ -114,7 +109,7 @@ public class CryptRSATests
         BigInteger expected = BigInteger.ModPow(
             input, exponent, modulus);
 
-        CryptRSA.CryptRSAEncrypt(state);
+        state.Encrypt();
 
         int actual =
             (state.EncryptBlock[0] << 8) |

@@ -17,14 +17,14 @@ public class CryptMD5Tests
     [InlineData("12345678901234567890123456789012345678901234567890123456789012345678901234567890", "57EDF4A22BE3C955AC49DA2E2107B67A")]
     public void ComputeHash_ReturnsExpectedHash(string input, string expected)
     {
-        var context = new CryptMD5T();
-        CryptMD5.CryptMD5Init(context);
+        var context = new CryptMD5();
+        context.Init();
 
         byte[] data = Encoding.ASCII.GetBytes(input);
-        CryptMD5.CryptMD5Update(context, data, data.Length);
+        context.Update(data, data.Length);
 
         byte[] output = new byte[CryptMD5.MD5_STRING_OUT];
-        CryptMD5.CryptMD5Final(context, output, output.Length);
+        context.Final(output, output.Length);
 
         Assert.Equal(expected, Encoding.ASCII.GetString(output, 0, 32).ToUpperInvariant());
     }
@@ -34,15 +34,15 @@ public class CryptMD5Tests
     {
         byte[] data = Encoding.ASCII.GetBytes(new string('a', 1000));
 
-        var singleContext = new CryptMD5T();
-        CryptMD5.CryptMD5Init(singleContext);
-        CryptMD5.CryptMD5Update(singleContext, data, data.Length);
+        var singleContext = new CryptMD5();
+        singleContext.Init();
+        singleContext.Update(data, data.Length);
 
         byte[] singleOutput = new byte[33];
-        CryptMD5.CryptMD5Final(singleContext, singleOutput, singleOutput.Length);
+        singleContext.Final(singleOutput, singleOutput.Length);
 
-        var chunkedContext = new CryptMD5T();
-        CryptMD5.CryptMD5Init(chunkedContext);
+        var chunkedContext = new CryptMD5();
+        chunkedContext.Init();
 
         for (int offset = 0; offset < data.Length;)
         {
@@ -50,12 +50,12 @@ public class CryptMD5Tests
             byte[] chunk = new byte[length];
             Array.Copy(data, offset, chunk, 0, length);
 
-            CryptMD5.CryptMD5Update(chunkedContext, chunk, chunk.Length);
+            chunkedContext.Update(chunk, chunk.Length);
             offset += length;
         }
 
         byte[] chunkedOutput = new byte[33];
-        CryptMD5.CryptMD5Final(chunkedContext, chunkedOutput, chunkedOutput.Length);
+        chunkedContext.Final(chunkedOutput, chunkedOutput.Length);
 
         Assert.Equal(singleOutput, chunkedOutput);
     }
@@ -63,38 +63,34 @@ public class CryptMD5Tests
     [Fact]
     public void BinaryOutput_ReturnsExpectedHash()
     {
-        var context = new CryptMD5T();
-        CryptMD5.CryptMD5Init(context);
+        var context = new CryptMD5();
+        context.Init();
 
         byte[] data = Encoding.ASCII.GetBytes("abc");
-        CryptMD5.CryptMD5Update(context, data, data.Length);
+        context.Update(data, data.Length);
 
         byte[] output = new byte[16];
-        CryptMD5.CryptMD5Final(context, output, output.Length);
+        context.Final(output, output.Length);
 
         if (OperatingSystem.IsLinux())
         {
-            Assert.Equal(
-                Convert.FromHexString("900150983CD24FB0D6963F7D28E17F72"),
-                output);
+            Assert.Equal(Convert.FromHexString("900150983CD24FB0D6963F7D28E17F72"), output);
         }
     }
 
     [Fact]
     public void Final_WritesNullTerminatedHexString()
     {
-        var context = new CryptMD5T();
-        CryptMD5.CryptMD5Init(context);
+        var context = new CryptMD5();
+        context.Init();
 
         byte[] data = Encoding.ASCII.GetBytes("abc");
-        CryptMD5.CryptMD5Update(context, data, data.Length);
+        context.Update(data, data.Length);
 
         byte[] output = new byte[33];
-        CryptMD5.CryptMD5Final(context, output, output.Length);
+        context.Final(output, output.Length);
 
         Assert.Equal((byte)0, output[32]);
-        Assert.Equal(
-            "900150983CD24FB0D6963F7D28E17F72",
-            Encoding.ASCII.GetString(output, 0, 32).ToUpperInvariant());
+        Assert.Equal("900150983CD24FB0D6963F7D28E17F72", Encoding.ASCII.GetString(output, 0, 32).ToUpperInvariant());
     }
 }

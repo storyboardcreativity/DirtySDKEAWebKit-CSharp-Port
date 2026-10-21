@@ -71,7 +71,7 @@ public class PlatformSocketAPICallbacksTests
     public void Socket_CreatesUdpSocket()
     {
         var api = CreateApi();
-        int fd = api.socket(2, 2, 0);
+        nint fd = api.socket(2, 2, 0);
 
         Assert.True(fd >= 0);
 
@@ -89,7 +89,7 @@ public class PlatformSocketAPICallbacksTests
     public void Close_ClosesValidSocket()
     {
         var api = CreateApi();
-        int fd = api.socket(2, 2, 0);
+        nint fd = api.socket(2, 2, 0);
 
         Assert.True(fd >= 0);
 
@@ -108,7 +108,7 @@ public class PlatformSocketAPICallbacksTests
     public void SetSockOptWrapper_Nbio_EnablesNonBlockingMode()
     {
         var api = CreateApi();
-        int fd = api.socket(2, 2, 0);
+        nint fd = api.socket(2, 2, 0);
 
         Assert.True(fd >= 0);
 

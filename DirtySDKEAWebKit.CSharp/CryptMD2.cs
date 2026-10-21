@@ -3,16 +3,13 @@ using System;
 
 namespace DirtySDKEAWebKit
 {
-    public sealed class CryptMD2T
+    public class CryptMD2
     {
         public int iCount;
         public readonly byte[] aState = new byte[16];
         public readonly byte[] aChecksum = new byte[16];
         public readonly byte[] aBuffer = new byte[16];
-    }
 
-    public static class CryptMD2
-    {
         public const int MD2_BINARY_OUT = 16;
         public const int MD2_STRING_OUT = 33;
 
@@ -36,28 +33,28 @@ namespace DirtySDKEAWebKit
             49,  68,  80, 180, 143, 237,  31,  26, 219, 153, 141,  51, 159,  17, 131,  20
         };
 
-        public static void CryptMD2Init(CryptMD2T pContext)
+        public void Init()
         {
-            Array.Clear(pContext.aState, 0, pContext.aState.Length);
-            Array.Clear(pContext.aChecksum, 0, pContext.aChecksum.Length);
-            Array.Clear(pContext.aBuffer, 0, pContext.aBuffer.Length);
-            pContext.iCount = 0;
+            Array.Clear(aState, 0, aState.Length);
+            Array.Clear(aChecksum, 0, aChecksum.Length);
+            Array.Clear(aBuffer, 0, aBuffer.Length);
+            iCount = 0;
         }
 
-        private static void _CryptMD2Transform(CryptMD2T pContext, byte[] pInput, int inputOffset)
+        private void _CryptMD2Transform(byte[] pInput, int inputOffset)
         {
             byte[] aCryptBlock = new byte[48];
             int iBlock;
             int iIter;
             int iTemp;
 
-            Array.Copy(pContext.aState, 0, aCryptBlock, 0, 16);
+            Array.Copy(aState, 0, aCryptBlock, 0, 16);
             Array.Copy(pInput, inputOffset, aCryptBlock, 16, 16);
 
             for (iBlock = 0; iBlock < 16; iBlock++)
             {
                 aCryptBlock[iBlock + 32] =
-                    (byte)(pContext.aState[iBlock] ^ pInput[inputOffset + iBlock]);
+                    (byte)(aState[iBlock] ^ pInput[inputOffset + iBlock]);
             }
 
             for (iIter = 0, iTemp = 0; iIter < 18; iIter++)
@@ -71,28 +68,27 @@ namespace DirtySDKEAWebKit
                 iTemp = (iTemp + iIter) & 0xff;
             }
 
-            Array.Copy(aCryptBlock, 0, pContext.aState, 0, 16);
+            Array.Copy(aCryptBlock, 0, aState, 0, 16);
 
-            iTemp = pContext.aChecksum[15];
+            iTemp = aChecksum[15];
 
             for (iBlock = 0; iBlock < 16; iBlock++)
             {
-                iTemp = pContext.aChecksum[iBlock] =
-                    (byte)(pContext.aChecksum[iBlock] ^
+                iTemp = aChecksum[iBlock] =
+                    (byte)(aChecksum[iBlock] ^
                         _CryptMD2_aPiSubst[pInput[inputOffset + iBlock] ^ iTemp]);
             }
 
             Array.Clear(aCryptBlock, 0, aCryptBlock.Length);
         }
 
-        public static void CryptMD2Update(CryptMD2T pContext, byte[] pBuffer, int iLength)
+        public void Update(byte[] pBuffer, int iLength)
         {
-            CryptMD2Update(pContext, pBuffer, 0, iLength);
+            Update(pBuffer, 0, iLength);
         }
 
-        public static void CryptMD2Update(CryptMD2T pContext, byte[] pBuffer, int bufferOffset, int iLength)
+        public void Update(byte[] pBuffer, int bufferOffset, int iLength)
         {
-            int iCount;
             int iIndex;
             int iPartLen;
 
@@ -107,28 +103,24 @@ namespace DirtySDKEAWebKit
                 }
             }
 
-            iCount = pContext.iCount;
-            pContext.iCount = (iCount + iLength) & 0x0f;
-            iPartLen = 16 - iCount;
+            int iCount_ = iCount;
+            iCount = (iCount_ + iLength) & 0x0f;
+            iPartLen = 16 - iCount_;
 
             if (iLength >= iPartLen)
             {
-                Array.Copy(
-                    pBuffer, bufferOffset,
-                    pContext.aBuffer, iCount,
-                    iPartLen);
+                Array.Copy(pBuffer, bufferOffset, aBuffer, iCount_, iPartLen);
 
-                _CryptMD2Transform(pContext, pContext.aBuffer, 0);
+                _CryptMD2Transform(aBuffer, 0);
 
                 for (iIndex = iPartLen;
                     iIndex + 15 < iLength;
                     iIndex += 16)
                 {
-                    _CryptMD2Transform(
-                        pContext, pBuffer, bufferOffset + iIndex);
+                    _CryptMD2Transform(pBuffer, bufferOffset + iIndex);
                 }
 
-                iCount = 0;
+                iCount_ = 0;
             }
             else
             {
@@ -137,15 +129,15 @@ namespace DirtySDKEAWebKit
 
             int remaining = iLength - iIndex;
             if (remaining > 0)
-                Array.Copy(pBuffer, bufferOffset + iIndex, pContext.aBuffer, iCount, remaining);
+                Array.Copy(pBuffer, bufferOffset + iIndex, aBuffer, iCount_, remaining);
         }
 
-        public static void CryptMD2Final(CryptMD2T pContext, byte[] pBuffer, int iLength)
+        public void Final(byte[] pBuffer, int iLength)
         {
-            CryptMD2Final(pContext, pBuffer, 0, iLength);
+            Final(pBuffer, 0, iLength);
         }
 
-        public static void CryptMD2Final(CryptMD2T pContext, byte[] pBuffer, int bufferOffset, int iLength)
+        public void Final(byte[] pBuffer, int bufferOffset, int iLength)
         {
             if (iLength < MD2_BINARY_OUT)
             {
@@ -153,31 +145,31 @@ namespace DirtySDKEAWebKit
                 return;
             }
 
-            int iPadLen = 16 - pContext.iCount;
+            int iPadLen = 16 - iCount;
 
             // MD2 padding consists of iPadLen bytes, each equal to iPadLen
             byte[] padding = new byte[iPadLen];
             Array.Fill(padding, (byte)iPadLen);
 
-            CryptMD2Update(pContext, padding, 0, iPadLen);
+            Update(padding, 0, iPadLen);
 
             // Update buffers the checksum block before transforming it, matching the original C implementation
-            CryptMD2Update(pContext, pContext.aChecksum, 0, 16);
+            Update(aChecksum, 0, 16);
 
-            Array.Copy(pContext.aState, 0, pBuffer, bufferOffset, MD2_BINARY_OUT);
+            Array.Copy(aState, 0, pBuffer, bufferOffset, MD2_BINARY_OUT);
 
             // The original implementation clears the whole context
-            CryptMD2Init(pContext);
+            Init();
         }
 
         public static byte[] ComputeHash(byte[] data)
         {
-            CryptMD2T context = new CryptMD2T();
+            CryptMD2 context = new CryptMD2();
             byte[] digest = new byte[MD2_BINARY_OUT];
 
-            CryptMD2Init(context);
-            CryptMD2Update(context, data, data.Length);
-            CryptMD2Final(context, digest, digest.Length);
+            context.Init();
+            context.Update(data, data.Length);
+            context.Final(digest, digest.Length);
 
             return digest;
         }

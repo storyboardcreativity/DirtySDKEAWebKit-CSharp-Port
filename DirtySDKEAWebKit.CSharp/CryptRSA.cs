@@ -3,25 +3,22 @@ using System.Diagnostics;
 
 namespace DirtySDKEAWebKit
 {
-    public struct CryptRSARandomT
+    public class CryptRSA
     {
-        public uint u0;
-        public uint u1;
-    }
+        private const int MaxWords = 4096 / 16;
 
-    public sealed class CryptRSAT
-    {
+        private struct CryptRSARandomT
+        {
+            public uint u0;
+            public uint u1;
+        }
+
         public int iKeyModSize;
         public int iKeyExpSize;
         public byte[] EncryptBlock = new byte[1024];
         public byte[] KeyModData = new byte[256 + 1];
         public byte[] KeyExpData = new byte[256 + 1];
-        public CryptRSARandomT Random;
-    }
-
-    public static class CryptRSA
-    {
-        private const int MaxWords = 4096 / 16;
+        private CryptRSARandomT _Random;
 
         private static int Addition(ushort[] result, int width, ushort[] add1, ushort[] add2)
         {
@@ -225,10 +222,10 @@ namespace DirtySDKEAWebKit
             FromWords(accum, width, result, modSize);
         }
 
-        public static void CryptRSAInit(CryptRSAT state, byte[] modulus, int modSize, byte[] exponent, int expSize)
+        public void Init(byte[] modulus, int modSize, byte[] exponent, int expSize)
         {
-            int maxModSize = state.KeyModData.Length - 1;
-            int maxExpSize = state.KeyExpData.Length - 1;
+            int maxModSize = KeyModData.Length - 1;
+            int maxExpSize = KeyExpData.Length - 1;
 
             if (modSize > maxModSize)
             {
@@ -248,60 +245,60 @@ namespace DirtySDKEAWebKit
                 expSize = maxExpSize;
             }
 
-            state.iKeyModSize = modSize;
-            state.iKeyExpSize = expSize;
+            iKeyModSize = modSize;
+            iKeyExpSize = expSize;
 
-            Array.Copy(modulus, 0, state.KeyModData, 0, modSize);
-            Array.Copy(exponent, 0, state.KeyExpData, 0, expSize);
+            Array.Copy(modulus, 0, KeyModData, 0, modSize);
+            Array.Copy(exponent, 0, KeyExpData, 0, expSize);
         }
 
-        public static void CryptRSAInitMaster(CryptRSAT state, byte[] master, int masterLen)
+        public void InitMaster(byte[] master, int masterLen)
         {
             int index;
             uint random = Tools.NetTick();
 
-            for (index = 0; index < state.iKeyModSize; ++index)
+            for (index = 0; index < iKeyModSize; ++index)
             {
-                state.EncryptBlock[index] =
+                EncryptBlock[index] =
                     (byte)((random & (1u << (index & 31))) != 0 ? 1 : 0);
             }
 
-            for (index = 0; index < state.iKeyModSize; ++index)
+            for (index = 0; index < iKeyModSize; ++index)
             {
                 do
                 {
                     random = unchecked((random * 69069u) + 69069u);
 
-                    state.EncryptBlock[index] ^=
+                    EncryptBlock[index] ^=
                         unchecked((byte)random);
                 }
-                while (state.EncryptBlock[index] == 0);
+                while (EncryptBlock[index] == 0);
             }
 
-            state.EncryptBlock[0] = 0;
-            state.EncryptBlock[1] = 2;
+            EncryptBlock[0] = 0;
+            EncryptBlock[1] = 2;
 
-            index = state.iKeyModSize - masterLen;
+            index = iKeyModSize - masterLen;
 
-            state.EncryptBlock[index - 1] = 0;
+            EncryptBlock[index - 1] = 0;
 
-            Array.Copy(master, 0, state.EncryptBlock, index, masterLen);
+            Array.Copy(master, 0, EncryptBlock, index, masterLen);
         }
 
-        public static void CryptRSAInitSignature(CryptRSAT state, byte[] signature, int sigLen)
+        public void InitSignature(byte[] signature, int sigLen)
         {
-            Array.Copy(signature, 0, state.EncryptBlock, 0, sigLen);
+            Array.Copy(signature, 0, EncryptBlock, 0, sigLen);
         }
 
-        public static void CryptRSAEncrypt(CryptRSAT state)
+        public void Encrypt()
         {
             Exponentiate(
-                state.EncryptBlock,
-                state.EncryptBlock,
-                state.KeyModData,
-                state.iKeyModSize,
-                state.KeyExpData,
-                state.iKeyExpSize);
+                EncryptBlock,
+                EncryptBlock,
+                KeyModData,
+                iKeyModSize,
+                KeyExpData,
+                iKeyExpSize);
         }
     }
 }

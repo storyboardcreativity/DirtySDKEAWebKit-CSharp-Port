@@ -1,4 +1,6 @@
 using System;
+using System.Net;
+using System.Net.Sockets;
 
 namespace DirtySDKEAWebKit
 {
@@ -44,15 +46,25 @@ namespace DirtySDKEAWebKit
                  | addr.SaData[5];
         }
 
-        public static void SockaddrInSetAddr(DirtySockAddress addr, uint value)
+        public static void SockaddrInSetAddr(DirtySockAddress? addr, IPAddress value)
         {
-            addr.SaData[5] = (byte)value;
-            value >>= 8;
-            addr.SaData[4] = (byte)value;
-            value >>= 8;
-            addr.SaData[3] = (byte)value;
-            value >>= 8;
-            addr.SaData[2] = (byte)value;
+            if (addr == null || value.AddressFamily != AddressFamily.InterNetwork)
+                throw new ArgumentException("An IPv4 address is required.", nameof(value));
+
+            byte[] bytes = value.GetAddressBytes();
+            addr.SaData[2] = bytes[0];
+            addr.SaData[3] = bytes[1];
+            addr.SaData[4] = bytes[2];
+            addr.SaData[5] = bytes[3];
+        }
+
+        public static void SockaddrInSetAddr(ref EndPoint? addr, IPAddress value)
+        {
+            if (value.AddressFamily != AddressFamily.InterNetwork)
+                throw new ArgumentException("An IPv4 address is required.", nameof(value));
+
+            int port = addr is IPEndPoint ipEndPoint ? ipEndPoint.Port : 0;
+            addr = new IPEndPoint(value, port);
         }
 
         public static uint SockaddrInGetMisc(DirtySockAddress addr)
@@ -222,14 +234,14 @@ namespace DirtySDKEAWebKit
             return SocketHtonl(addr);
         }
 
-        public static string SocketInAddrGetText(int addr)
+        public static string SocketInAddrGetText(IPAddress addr)
         {
             var sa = new DirtySockAddress();
-            SockaddrInSetAddr(sa, unchecked((uint)addr));
+            SockaddrInSetAddr(sa, addr);
             return SockaddrInGetAddrText(sa, 20) ?? string.Empty;
         }
 
-        public static char[]? SocketInAddrGetText2(uint addr, char[] buffer, int len)
+        public static char[]? SocketInAddrGetText2(IPAddress addr, char[] buffer, int len)
         {
             var sa = new DirtySockAddress();
             SockaddrInSetAddr(sa, addr);
@@ -252,7 +264,7 @@ namespace DirtySDKEAWebKit
 
             SockaddrInit(sa, AF_INET);
 
-            int result = SockaddrInParse2(out uint addr, out int port, out _, parse, false);
+            int result = SockaddrInParse2(out IPAddress? addr, out int port, out _, parse, false);
 
             SockaddrInSetAddr(sa, addr);
             SockaddrInSetPort(sa, port);
@@ -260,7 +272,7 @@ namespace DirtySDKEAWebKit
             return result;
         }
 
-        public static int SockaddrInParse2(out uint address, out int port, out int? port2, string parse, bool parsePort2 = true)
+        public static int SockaddrInParse2(out IPAddress? address, out int port, out int? port2, string parse, bool parsePort2 = true)
         {
             int result = 0;
             int pos = 0;
@@ -292,9 +304,17 @@ namespace DirtySDKEAWebKit
                 }
             }
 
-            address = value;
+            address = value != 0
+                ? new IPAddress(new byte[]
+                {
+                    (byte)(value >> 24),
+                    (byte)(value >> 16),
+                    (byte)(value >> 8),
+                    (byte)value
+                })
+                : null;
 
-            if (address != 0)
+            if (value != 0)
                 result |= 1;
 
             while (pos < parse.Length && parse[pos] != ':')

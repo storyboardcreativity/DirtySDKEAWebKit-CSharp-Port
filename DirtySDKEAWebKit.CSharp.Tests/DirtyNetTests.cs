@@ -2,6 +2,7 @@
 using System;
 using Xunit;
 using DirtySDKEAWebKit;
+using System.Net;
 
 namespace DirtySDKEAWebKit.Tests;
 
@@ -52,7 +53,7 @@ public class DirtyNetTests
     {
         var addr = new DirtySockAddress();
 
-        DirtyNet.SockaddrInSetAddr(addr, 0xC0A8010A);
+        DirtyNet.SockaddrInSetAddr(addr, IPAddress.Parse("192.168.1.10"));
 
         Assert.Equal((byte)192, addr.SaData[2]);
         Assert.Equal((byte)168, addr.SaData[3]);
@@ -122,8 +123,8 @@ public class DirtyNetTests
         var a = new DirtySockAddress(DirtyNet.AF_INET);
         var b = new DirtySockAddress(DirtyNet.AF_INET);
 
-        DirtyNet.SockaddrInSetAddr(a, 0xC0A80101);
-        DirtyNet.SockaddrInSetAddr(b, 0xC0A80101);
+        DirtyNet.SockaddrInSetAddr(a, IPAddress.Parse("192.168.1.1"));
+        DirtyNet.SockaddrInSetAddr(b, IPAddress.Parse("192.168.1.1"));
         DirtyNet.SockaddrInSetPort(a, 80);
         DirtyNet.SockaddrInSetPort(b, 80);
 
@@ -278,23 +279,12 @@ public class DirtyNetTests
         }
     }
 
-    [Theory]
-    [InlineData(0x01020304, "1.2.3.4")]
-    [InlineData(unchecked((int)0xC0A8010A), "192.168.1.10")]
-    [InlineData(0x7F000001, "127.0.0.1")]
-    [InlineData(unchecked((int)0xFFFFFFFF), "255.255.255.255")]
-    public void SocketInAddrGetText_FormatsAddress(int address, string expected)
-    {
-        Assert.Equal(expected, DirtyNet.SocketInAddrGetText(address));
-    }
-
     [Fact]
     public void SocketInAddrGetText2_FormatsAddressIntoBuffer()
     {
         char[] buffer = new char[16];
 
-        char[]? result = DirtyNet.SocketInAddrGetText2(
-            0xC0A8010A, buffer, buffer.Length);
+        char[]? result = DirtyNet.SocketInAddrGetText2(IPAddress.Parse("192.168.1.10"), buffer, buffer.Length);
 
         Assert.Same(buffer, result);
         Assert.Equal("192.168.1.10", new string(buffer, 0, 12));
@@ -341,13 +331,13 @@ public class DirtyNetTests
     public void SockaddrInParse2_ParsesTwoPorts()
     {
         int result = DirtyNet.SockaddrInParse2(
-            out uint address,
+            out IPAddress? address,
             out int port,
             out int? port2,
             "192.168.1.10:8080:9000");
 
         Assert.Equal(7, result);
-        Assert.Equal(0xC0A8010AU, address);
+        Assert.Equal(IPAddress.Parse("192.168.1.10"), address);
         Assert.Equal(8080, port);
         Assert.Equal(9000, port2);
     }
@@ -356,13 +346,13 @@ public class DirtyNetTests
     public void SockaddrInParse2_ReportsPresentZeroPort()
     {
         int result = DirtyNet.SockaddrInParse2(
-            out uint address,
+            out IPAddress? address,
             out int port,
             out int? port2,
             "0.0.0.0:0:0");
 
         Assert.Equal(6, result);
-        Assert.Equal(0U, address);
+        Assert.Null(address);
         Assert.Equal(0, port);
         Assert.Equal(0, port2);
     }
@@ -371,14 +361,14 @@ public class DirtyNetTests
     public void SockaddrInParse2_SkipsLeadingWhitespace()
     {
         int result = DirtyNet.SockaddrInParse2(
-            out uint address,
+            out IPAddress? address,
             out int port,
             out _,
             " \t192.168.1.10:80",
             false);
 
         Assert.Equal(3, result);
-        Assert.Equal(0xC0A8010AU, address);
+        Assert.Equal(IPAddress.Parse("192.168.1.10"), address);
         Assert.Equal(80, port);
     }
 
@@ -386,14 +376,14 @@ public class DirtyNetTests
     public void SockaddrInParse2_SkipsTextBeforePort()
     {
         int result = DirtyNet.SockaddrInParse2(
-            out uint address,
+            out IPAddress? address,
             out int port,
             out _,
             "192.168.1.10xyz:8080",
             false);
 
         Assert.Equal(3, result);
-        Assert.Equal(0xC0A8010AU, address);
+        Assert.Equal(IPAddress.Parse("192.168.1.10"), address);
         Assert.Equal(8080, port);
     }
 
@@ -416,13 +406,13 @@ public class DirtyNetTests
     public void SockaddrInParse2_ReturnsZeroForEmptyInput()
     {
         int result = DirtyNet.SockaddrInParse2(
-            out uint address,
+            out IPAddress? address,
             out int port,
             out int? port2,
             "");
 
         Assert.Equal(0, result);
-        Assert.Equal(0U, address);
+        Assert.Null(address);
         Assert.Equal(0, port);
         Assert.Equal(0, port2);
     }
