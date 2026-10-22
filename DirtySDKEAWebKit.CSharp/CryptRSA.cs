@@ -5,7 +5,7 @@ namespace DirtySDKEAWebKit
 {
     public class CryptRSA
     {
-        private const int MaxWords = 4096 / 16;
+        internal const int MaxWords = 4096 / 16;
 
         private struct CryptRSARandomT
         {
@@ -20,7 +20,7 @@ namespace DirtySDKEAWebKit
         public byte[] KeyExpData = new byte[256 + 1];
         private CryptRSARandomT _Random;
 
-        private static int Addition(ushort[] result, int width, ushort[] add1, ushort[] add2)
+        internal static int Addition(ushort[] result, int width, ushort[] add1, ushort[] add2)
         {
             uint accum = 0;
 
@@ -34,7 +34,7 @@ namespace DirtySDKEAWebKit
             return (int)accum;
         }
 
-        private static int Subtract(ushort[] result, int width, ushort[] sub1, ushort[] sub2)
+        internal static int Subtract(ushort[] result, int width, ushort[] sub1, ushort[] sub2)
         {
             uint accum = 0;
 
@@ -49,7 +49,7 @@ namespace DirtySDKEAWebKit
             return (int)accum;
         }
 
-        private static int BitTest(ushort[] value, int width, int bit)
+        internal static int BitTest(ushort[] value, int width, int bit)
         {
             int step = sizeof(ushort) * 8;
             int weight = bit % step;
@@ -59,7 +59,7 @@ namespace DirtySDKEAWebKit
             return result;
         }
 
-        private static void Multiply(ushort[] result, int width, ushort[] mul1, ushort[] mul2, ushort[] mod)
+        internal static void Multiply(ushort[] result, int width, ushort[] mul1, ushort[] mul2, ushort[] mod)
         {
             int count;
             int carry;
@@ -100,7 +100,7 @@ namespace DirtySDKEAWebKit
             Array.Copy(cur, result, width);
         }
 
-        private static int ToWords(ushort[] result, int width, byte[] source, int length)
+        internal static int ToWords(ushort[] result, int width, byte[] source, int length)
         {
             int fullWordCount = length / 2;
             int wordCount = (length + 1) / 2;
@@ -137,7 +137,7 @@ namespace DirtySDKEAWebKit
             return wordCount;
         }
 
-        private static void FromWords(ushort[] source, int width, byte[] result, int length)
+        internal static void FromWords(ushort[] source, int width, byte[] result, int length)
         {
             length /= 2;
 
@@ -152,7 +152,7 @@ namespace DirtySDKEAWebKit
             }
         }
 
-        private static void Exponentiate(byte[] result, byte[] powerOf, byte[] modulus, int modSize, byte[] exponent, int expSize)
+        internal static void Exponentiate(byte[] result, byte[] powerOf, byte[] modulus, int modSize, byte[] exponent, int expSize)
         {
             int index;
             int width;
@@ -254,6 +254,13 @@ namespace DirtySDKEAWebKit
 
         public void InitMaster(byte[] master, int masterLen)
         {
+            ArgumentNullException.ThrowIfNull(master);
+            if (masterLen < 0 || masterLen > master.Length)
+                throw new ArgumentOutOfRangeException(nameof(masterLen));
+            
+            if (masterLen > iKeyModSize - 11)
+                throw new ArgumentException("Master key is too long for PKCS#1 v1.5 padding.");
+
             int index;
             uint random = Tools.NetTick();
 

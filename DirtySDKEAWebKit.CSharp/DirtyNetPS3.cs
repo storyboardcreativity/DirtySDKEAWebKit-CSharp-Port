@@ -70,16 +70,6 @@ public static class DirtyNetPS3
         public IntPtr h_addr_list;
     }
 
-    public sealed class SocketT
-    {
-        public int family;
-        public int type;
-        public int proto;
-        public sbyte opened;
-        public byte unused;
-        public nint socket;
-    }
-
     private sealed class SocketStateT
     {
         public int iMemGroup;
@@ -116,14 +106,14 @@ public static class DirtyNetPS3
     {
         return error switch
         {
-            SocketError.Success => 0,
-            SocketError.WouldBlock or SocketError.IOPending => 0,
-            SocketError.NetworkUnreachable or SocketError.HostUnreachable => -5,
-            SocketError.NotConnected => -2,
-            SocketError.ConnectionRefused => -6,
-            SocketError.InvalidArgument => -11,
-            SocketError.ConnectionReset => -13,
-            _ => -7
+            SocketError.Success => SOCKERR_NONE,
+            SocketError.WouldBlock or SocketError.IOPending => SOCKERR_NONE,
+            SocketError.NetworkUnreachable or SocketError.HostUnreachable => SOCKERR_UNREACH,
+            SocketError.NotConnected => SOCKERR_NOTCONN,
+            SocketError.ConnectionRefused => SOCKERR_REFUSED,
+            SocketError.InvalidArgument => SOCKERR_INVALID,
+            SocketError.ConnectionReset => SOCKERR_CONNRESET,
+            _ => SOCKERR_OTHER
         };
     }
 
@@ -163,21 +153,22 @@ public static class DirtyNetPS3
             if (from is not null)
             {
                 EndPoint remote = from;
-                int result = socket.ReceiveFrom(
-                    buffer,
-                    0,
-                    length,
-                    SocketFlags.None,
-                    ref remote);
-
+                int result = socket.ReceiveFrom(buffer, 0, length, SocketFlags.None, ref remote);
+                
+                Tools.NetPrintf($"Received {buffer.Length} bytes from socket:");
+                Tools.PrintBuffer(buffer);
                 return result;
             }
 
-            return socket.Receive(
+            int res = socket.Receive(
                 buffer,
                 0,
                 length,
                 SocketFlags.None);
+
+            Tools.NetPrintf($"Received {buffer.Length} bytes from socket:");
+            Tools.PrintBuffer(buffer);
+            return res;
         }
         catch (SocketException ex)
         {
@@ -397,6 +388,9 @@ public static class DirtyNetPS3
         if (buffer is null || length < 0 || length > buffer.Length)
             return SOCKERR_INVALID;
 
+        Tools.NetPrintf($"Sending {length} bytes to socket:");
+        Tools.PrintBuffer(buffer.Take(length).ToArray());
+
         try
         {
             int result = address is null
@@ -497,7 +491,7 @@ public static class DirtyNetPS3
         return -1;
     }
 
-    public static int SocketControl(SocketT? socket, int option, int data1, IntPtr data2, IntPtr data3)
+    public static int SocketControl(Socket? socket, int option, int data1, IntPtr data2, IntPtr data3)
     {
         if (option == Tools.FourCC("pool"))
         {

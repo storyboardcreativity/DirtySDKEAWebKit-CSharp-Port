@@ -600,7 +600,7 @@ namespace DirtySDKEAWebKit
 
             byte[] strBody = new byte[256];
 
-            // Generate MasterKey (48 bytes).
+            // Generate MasterKey (48 bytes)
             for (int iLoop = 0; iLoop < 3; ++iLoop)
             {
                 var MD5Context = new CryptMD5();
@@ -764,7 +764,7 @@ namespace DirtySDKEAWebKit
             // memcpy(&MD5Context, &pSecure->HandshakeMD5, sizeof(MD5Context));
             MD5Context = pSecure.HandshakeMD5.Clone();
             MD5Context.Update(System.Text.Encoding.ASCII.GetBytes("CLNT"), 4);
-            MD5Context.Update(pSecure.MasterKey,pSecure.MasterKey.Length);
+            MD5Context.Update(pSecure.MasterKey, pSecure.MasterKey.Length);
             MD5Context.Update(_SSL3_Pad1, 48);
             MD5Context.Final(MacTemp, 16);
 
@@ -926,7 +926,7 @@ namespace DirtySDKEAWebKit
             }
 
             // Preserve original timing behavior
-            Thread.Sleep(1000);
+            Thread.Sleep(500);
 
             // Wait for connection
             if (pState.iState == ProtoSSLConstants.ST_WAIT)
@@ -1008,7 +1008,7 @@ namespace DirtySDKEAWebKit
                     }
                 }
 
-                Thread.Sleep(1000);
+                Thread.Sleep(500);
 
                 // Receive the initial SSL record header
                 if (pSecure.iRecvSize < ProtoSSLConstants.SSL_MIN_PACKET)
@@ -1705,12 +1705,6 @@ namespace DirtySDKEAWebKit
                     byte[] clientMac = pSecure.pClientMAC
                         ?? throw new InvalidOperationException("Client MAC key is not initialized.");
 
-                    byte[] innerData = new byte[16 + 48 + macData.Length + iSize];
-                    Buffer.BlockCopy(clientMac, 0, innerData, 0, 16);
-                    Buffer.BlockCopy(_SSL3_Pad1, 0, innerData, 16, 48);
-                    Buffer.BlockCopy(macData, 0, innerData, 64, macData.Length);
-                    Buffer.BlockCopy(pSend, iSendOffset, innerData, 64 + macData.Length, iSize);
-
                     var md5context = new CryptMD5();
                     md5context.Init();
                     md5context.Update(clientMac, 16);
@@ -1741,7 +1735,7 @@ namespace DirtySDKEAWebKit
                     sha1context.Update(clientMac, 20);
                     sha1context.Update(_SSL3_Pad1, 40);
                     sha1context.Update(macData, (uint)macData.Length);
-                    sha1context.Update(pSend, (uint)iSize);
+                    sha1context.Update(pSend, iSendOffset, (uint)iSize);
                     sha1context.Final(macTemp, 20);
 
                     sha1context.Init();

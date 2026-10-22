@@ -9,8 +9,8 @@ namespace DirtySDKEAWebKit
 
         private uint uCount;
         private uint uPartialCount;
-        private readonly uint[] H = new uint[5];
-        private readonly byte[] strData = new byte[BLOCK_SIZE];
+        public readonly uint[] H = new uint[5];
+        public readonly byte[] strData = new byte[BLOCK_SIZE];
 
         public CryptSHA1()
         {
