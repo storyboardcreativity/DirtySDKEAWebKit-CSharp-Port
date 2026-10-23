@@ -6,7 +6,7 @@ using DirtySDKEAWebKit;
 
 namespace DirtySDKEAWebKit.CSharp;
 
-public static class DirtyNetPS3
+public class DirtyNetPS3
 {
     public const int INVALID_SOCKET = -1;
     public const int SOCKET_MAXPOLL = 32;
@@ -49,8 +49,6 @@ public static class DirtyNetPS3
 
     public const int SOCKET_ERROR = -1;
 
-    private static SocketStateT? _Socket_pState = null;
-    private static int _Socket_iMemPoolSize = 128 * 1024;
 
     [StructLayout(LayoutKind.Sequential)]
     private struct PollFd
@@ -70,18 +68,6 @@ public static class DirtyNetPS3
         public IntPtr h_addr_list;
     }
 
-    private sealed class SocketStateT
-    {
-        public int iMemGroup;
-        public IntPtr pMemGroupUserData;
-        public IntPtr pMemPool;
-        public int iSid;
-        public int iHandlerId;
-        public uint uConnStatus;
-        public uint uLocalAddr;
-        public readonly byte[] aMacAddr = new byte[6];
-    }
-
     public sealed class HostentT
     {
         public enum HostLookupStatus
@@ -96,10 +82,16 @@ public static class DirtyNetPS3
         public string Name { get; set; } = string.Empty;
     }
 
+
+    private readonly Socket _socket;
+    public DirtyNetPS3(Socket socket)
+    {
+        _socket = socket;
+    }
+
     static DirtyNetPS3()
     {
-        // Initialize networking automatically at start
-        SocketCreate(0);
+        Tools.NetPrintf($"dirtynetps3: DirtySock SDK v{(DIRTYVERS >> 24) & 255}.{(DIRTYVERS >> 16) & 255}.{(DIRTYVERS >> 8) & 255}.{DIRTYVERS & 255}\n");
     }
 
     private static int _XlatError(SocketError error)
@@ -117,29 +109,6 @@ public static class DirtyNetPS3
         };
     }
 
-    private static Socket? _SocketOpen(Socket? socket, AddressFamily family, SocketType type, ProtocolType proto, bool opened)
-    {
-        SocketStateT? state = _Socket_pState;
-        if (state is null)
-            return null;
-            
-        try
-        {
-            if (socket is null)
-            {
-                socket = new Socket(family, type, proto);
-                socket.Blocking = false;
-            }
-
-            return socket;
-        }
-        catch (SocketException ex)
-        {
-            Tools.NetPrintf($"dirtynetps3: socket() failed (err={ex.SocketErrorCode})");
-            return null;
-        }
-    }
-
     private static int _SocketRecvfrom(Socket? socket, byte[] buffer, int length, EndPoint? from)
     {
         if (socket == null)
@@ -155,8 +124,8 @@ public static class DirtyNetPS3
                 EndPoint remote = from;
                 int result = socket.ReceiveFrom(buffer, 0, length, SocketFlags.None, ref remote);
                 
-                Tools.NetPrintf($"Received {buffer.Length} bytes from socket:");
-                Tools.PrintBuffer(buffer);
+                //Tools.NetPrintf($"Received {buffer.Length} bytes from socket:");
+                //Tools.PrintBuffer(buffer);
                 return result;
             }
 
@@ -166,8 +135,8 @@ public static class DirtyNetPS3
                 length,
                 SocketFlags.None);
 
-            Tools.NetPrintf($"Received {buffer.Length} bytes from socket:");
-            Tools.PrintBuffer(buffer);
+            //Tools.NetPrintf($"Received {buffer.Length} bytes from socket:");
+            //Tools.PrintBuffer(buffer);
             return res;
         }
         catch (SocketException ex)
@@ -180,62 +149,13 @@ public static class DirtyNetPS3
         }
     }
 
-    private static int SocketCreate(int threadPriority)
+    public int SocketClose()
     {
-        DirtyMem.DirtyMemGroupQuery(out int group, out IntPtr userData);
-
-        if (_Socket_pState is not null)
-            return -1;
-
-        Tools.NetPrintf($"dirtynetps3: DirtySock SDK v{(DIRTYVERS >> 24) & 255}.{(DIRTYVERS >> 16) & 255}.{(DIRTYVERS >> 8) & 255}.{DIRTYVERS & 255}\n");
-
-        //IntPtr stateMemory = DirtyMem.DirtyMemAlloc(
-        //    Marshal.SizeOf<SocketStateT>(), SOCKET_MEMID, group, userData);
-        //if (stateMemory == IntPtr.Zero)
-        //    return -2;
-
-        IntPtr pool = DirtyMem.DirtyMemAlloc(_Socket_iMemPoolSize, SOCKET_MEMID, group, userData);
-
-        if (pool == IntPtr.Zero)
-        {
-            //DirtyMem.DirtyMemFree(stateMemory, SOCKET_MEMID, group, userData);
-            return -3;
-        }
-
-        _Socket_pState = new SocketStateT
-        {
-            iMemGroup = group,
-            pMemGroupUserData = userData,
-            pMemPool = pool
-        };
-
-        //DirtyMem.DirtyMemFree(stateMemory, SOCKET_MEMID, group, userData);
-        return 0;
-    }
-
-    private static int SocketDestroy(uint flags)
-    {
-        SocketStateT? state = _Socket_pState;
-        if (state is null)
-            return -1;
-
-        DirtyMem.DirtyMemFree(
-            state.pMemPool, SOCKET_MEMID, state.iMemGroup, state.pMemGroupUserData);
-
-        _Socket_pState = null;
-        return 0;
-    }
-
-    public static Socket? SocketOpen(AddressFamily family, SocketType type, ProtocolType proto) =>
-        _SocketOpen(null, family, type, proto, false);
-
-    public static int SocketClose(Socket socket)
-    {
-        SocketShutdown(socket, SOCK_NOSEND);
+        SocketShutdown(SOCK_NOSEND);
 
         try
         {
-            socket.Dispose();
+            _socket.Dispose();
         }
         catch (SocketException ex)
         {
@@ -245,9 +165,9 @@ public static class DirtyNetPS3
         return 0;
     }
 
-    public static int SocketShutdown(Socket? socket, int how)
+    public int SocketShutdown(int how)
     {
-        if (socket == null || socket.SocketType != SocketType.Stream)
+        if (_socket == null || _socket.SocketType != SocketType.Stream)
             return SOCKERR_NONE;
 
         try
@@ -260,7 +180,7 @@ public static class DirtyNetPS3
                 _ => (SocketShutdown)how
             };
 
-            socket.Shutdown(howTo);
+            _socket.Shutdown(howTo);
             return SOCKERR_NONE;
         }
         catch (SocketException ex)
@@ -274,14 +194,14 @@ public static class DirtyNetPS3
         }
     }
 
-    public static int SocketBind(Socket? socket, EndPoint? endpoint)
+    public int SocketBind(EndPoint? endpoint)
     {
-        if (socket is null || endpoint is null)
+        if (_socket is null || endpoint is null)
             return SOCKERR_INVALID;
 
         try
         {
-            socket.Bind(endpoint);
+            _socket.Bind(endpoint);
             return SOCKERR_NONE;
         }
         catch (SocketException ex)
@@ -294,14 +214,14 @@ public static class DirtyNetPS3
         }
     }
 
-    public static int SocketConnect(Socket? socket, EndPoint? address)
+    public int SocketConnect(EndPoint? address)
     {
-        if (socket is null || address is null)
+        if (_socket is null || address is null)
             return SOCKERR_INVALID;
 
         try
         {
-            socket.Connect(address);
+            _socket.Connect(address);
             return SOCKERR_NONE;
         }
         catch (SocketException ex)
@@ -317,14 +237,14 @@ public static class DirtyNetPS3
         }
     }
 
-    public static int SocketListen(Socket? socket, int backlog)
+    public int SocketListen(int backlog)
     {
-        if (socket is null)
+        if (_socket is null)
             return SOCKERR_INVALID;
 
         try
         {
-            socket.Listen(backlog);
+            _socket.Listen(backlog);
             return SOCKERR_NONE;
         }
         catch (SocketException ex)
@@ -338,21 +258,22 @@ public static class DirtyNetPS3
         }
     }
 
-    public static Socket? SocketAccept(Socket? socket, out IPEndPoint? address)
+    /*
+    private Socket? _socketAccept(out IPEndPoint? address)
     {
         address = null;
 
-        if (socket is null || socket.SocketType != SocketType.Stream || socket.AddressFamily != AddressFamily.InterNetwork)
+        if (_socket is null || _socket.SocketType != SocketType.Stream || _socket.AddressFamily != AddressFamily.InterNetwork)
             return null;
 
         try
         {
-            Socket incoming = socket.Accept();
+            Socket incoming = _socket.Accept();
             incoming.Blocking = false;
 
             address = incoming.RemoteEndPoint as IPEndPoint;
 
-            Socket? result = _SocketOpen(
+            Socket? result = _socketOpen(
                 incoming,
                 incoming.AddressFamily,
                 incoming.SocketType,
@@ -379,23 +300,24 @@ public static class DirtyNetPS3
             return null;
         }
     }
+    */
 
-    public static int SocketSendto(Socket? socket, byte[] buffer, int length, int flags, EndPoint? address)
+    public int SocketSendto(byte[] buffer, int length, int flags, EndPoint? address)
     {
-        if (socket is null)
+        if (_socket is null)
             return SOCKERR_INVALID;
 
         if (buffer is null || length < 0 || length > buffer.Length)
             return SOCKERR_INVALID;
 
-        Tools.NetPrintf($"Sending {length} bytes to socket:");
-        Tools.PrintBuffer(buffer.Take(length).ToArray());
+        //Tools.NetPrintf($"Sending {length} bytes to socket:");
+        //Tools.PrintBuffer(buffer.Take(length).ToArray());
 
         try
         {
             int result = address is null
-                ? socket.Send(buffer, 0, length, (SocketFlags)flags)
-                : socket.SendTo(buffer, 0, length, (SocketFlags)flags, address);
+                ? _socket.Send(buffer, 0, length, (SocketFlags)flags)
+                : _socket.SendTo(buffer, 0, length, (SocketFlags)flags, address);
 
             return result;
         }
@@ -409,23 +331,23 @@ public static class DirtyNetPS3
         }
     }
 
-    public static int SocketSend(Socket? socket, byte[] buffer, int length, int flags)
+    public int SocketSend(byte[] buffer, int length, int flags)
     {
-        return SocketSendto(socket, buffer, length, flags, null);
+        return SocketSendto(buffer, length, flags, null);
     }
 
-    public static int SocketRecvfrom(Socket? socket, byte[] buffer, int length, int flags, EndPoint? from)
+    public int SocketRecvfrom(byte[] buffer, int length, int flags, EndPoint? from)
     {
-        if (socket == null)
+        if (_socket == null)
             return SOCKERR_INVALID;
 
         if (buffer is null || length < 0 || length > buffer.Length)
             return SOCKERR_INVALID;
 
         int iRecv = -1;
-        if (socket.SocketType == SocketType.Stream)
+        if (_socket.SocketType == SocketType.Stream)
         {
-            iRecv = _SocketRecvfrom(socket, buffer, length, from);
+            iRecv = _SocketRecvfrom(_socket, buffer, length, from);
             if (iRecv < 0 && iRecv != unchecked((int)0x80010223))//or again
                 Tools.NetPrintf($"dirtynetps3: _SocketRecvfrom() failed (err={iRecv})\n\n");
         }
@@ -433,12 +355,12 @@ public static class DirtyNetPS3
         return iRecv == 0 ? SOCKERR_CLOSED : iRecv;
     }
 
-    public static int SocketRecv(Socket? socket, byte[] buffer, int length, int flags)
+    public int SocketRecv(byte[] buffer, int length, int flags)
     {
-        return SocketRecvfrom(socket, buffer, length, flags, null);
+        return SocketRecvfrom(buffer, length, flags, null);
     }
 
-    public static int SocketInfo(Socket? socket, int info, int data, IntPtr buffer, int length)
+    public int SocketInfo(int info, int data, IntPtr buffer, int length)
     {
         if (buffer != IntPtr.Zero && length > 0)
         {
@@ -446,7 +368,7 @@ public static class DirtyNetPS3
                 Marshal.WriteByte(buffer, i, 0);
         }
 
-        if (socket is null)
+        if (_socket is null)
             return -2;
 
         if (info == Tools.FourCC("stat"))
@@ -454,9 +376,9 @@ public static class DirtyNetPS3
             int opened = 0;
             try
             {
-                if (socket.Poll(0, SelectMode.SelectWrite) || socket.Poll(0, SelectMode.SelectError))
+                if (_socket.Poll(0, SelectMode.SelectWrite) || _socket.Poll(0, SelectMode.SelectError))
                 {
-                    int error = (int)socket.GetSocketOption(
+                    int error = (int)_socket.GetSocketOption(
                         SocketOptionLevel.Socket,
                         SocketOptionName.Error)!;
 
@@ -467,7 +389,7 @@ public static class DirtyNetPS3
                 {
                     try
                     {
-                        if (socket.RemoteEndPoint is null)
+                        if (_socket.RemoteEndPoint is null)
                             opened = -1;
                     }
                     catch (SocketException)
@@ -491,21 +413,16 @@ public static class DirtyNetPS3
         return -1;
     }
 
-    public static int SocketControl(Socket? socket, int option, int data1, IntPtr data2, IntPtr data3)
+    public static int SocketControl(int option, int data1, IntPtr data2, IntPtr data3)
     {
         if (option == Tools.FourCC("pool"))
-        {
-            _Socket_iMemPoolSize = data1;
             return 0;
-        }
-
         return -1;
     }
 
     public static HostentT? SocketLookup(string text, int timeout)
     {
-        SocketStateT? state = _Socket_pState;
-        if (state is null || timeout < 0)
+        if (timeout < 0)
             return null;
 
         HostentT host = new()
@@ -526,7 +443,7 @@ public static class DirtyNetPS3
         {
             // We use our wrapped instead of the "Dns.GetHostAddresses(host.Name)" because
             //     we need to connect to Revora instead of the old standard dead EA servers
-            IPAddress[] addresses = GetHostByNameWrapper(host.Name);
+            IPAddress[] addresses = _getHostByNameWrapper(host.Name);
             IPAddress? ipv4 = Array.Find(addresses, a => a.AddressFamily == AddressFamily.InterNetwork);
             if (ipv4 is not null)
             {
@@ -550,7 +467,7 @@ public static class DirtyNetPS3
         return host;
     }
 
-    private static IPAddress[] GetHostByNameWrapper(string name)
+    private static IPAddress[] _getHostByNameWrapper(string name)
     {
         string res = name;
 

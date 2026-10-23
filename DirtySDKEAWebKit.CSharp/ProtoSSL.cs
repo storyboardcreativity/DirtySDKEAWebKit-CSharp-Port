@@ -206,11 +206,8 @@ namespace DirtySDKEAWebKit
 
     public sealed class ProtoSSLRefT
     {
-        public Socket? pSock = null;
+        public DirtyNetPS3? pSock = null;
         public DirtyNetPS3.HostentT? pHost = new DirtyNetPS3.HostentT();
-
-        public int iMemGroup;
-        public object? pMemGroupUserData;
 
         public string strHost = "";
         public System.Net.EndPoint? PeerAddr;
@@ -227,25 +224,16 @@ namespace DirtySDKEAWebKit
     {
         public static ProtoSSLRefT? ProtoSSLCreate()
         {
-            int iMemGroup = 0;
-            object? pMemGroupUserData = null;
-
-            //DirtyMem.DirtyMemGroupQuery(out iMemGroup, out pMemGroupUserData);
-
             ProtoSSLRefT pState;
             try
             {
-                //pState = DirtyMemAlloc(...);
                 pState = new ProtoSSLRefT();
             }
             catch (OutOfMemoryException)
             {
-                // NetPrintf(("protossl: could not allocate module state\n"));
+                Tools.NetPrintf(("protossl: could not allocate module state\n"));
                 return null;
             }
-
-            pState.iMemGroup = iMemGroup;
-            pState.pMemGroupUserData = pMemGroupUserData;
 
             return pState;
         }
@@ -258,24 +246,21 @@ namespace DirtySDKEAWebKit
         public static void ProtoSSLDestroy(ProtoSSLRefT pState)
         {
             _ResetState(pState, 0);
-
-            // В C# сборщик мусора освобождает память объекта.
-            // DirtyMemFree для самого pState не требуется.
         }
 
         public static int ProtoSSLBind(ProtoSSLRefT pState, EndPoint pAddr)
         {
             if (pState.pSock != null)
             {
-                DirtyNetPS3.SocketClose(pState.pSock);
+                pState.pSock.SocketClose();
                 pState.pSock = null;
             }
 
-            pState.pSock = DirtyNetPS3.SocketOpen(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.IP);
+            pState.pSock = DirtyNet.CreateSocket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.IP);
             if (pState.pSock == null)
                 return DirtyNetPS3.SOCKERR_OTHER;
 
-            return DirtyNetPS3.SocketBind(pState.pSock, pAddr);
+            return pState.pSock.SocketBind(pAddr);
         }
 
         public static int ProtoSSLConnect(ProtoSSLRefT pState, int iSecure, string? pAddr, uint uAddr, int iPort)
@@ -286,12 +271,9 @@ namespace DirtySDKEAWebKit
                 return iError;
             }
 
-            pState.pSock = DirtyNetPS3.SocketOpen(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.IP);
-
+            pState.pSock = DirtyNet.CreateSocket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.IP);
             if (pState.pSock == null)
-            {
                 return DirtyNetPS3.SOCKERR_NORSRC;
-            }
 
             pAddr ??= string.Empty;
 
@@ -343,7 +325,7 @@ namespace DirtySDKEAWebKit
         {
             if (pState.pSock == null)
                 return DirtyNetPS3.SOCKERR_INVALID;
-            return DirtyNetPS3.SocketListen(pState.pSock, iBacklog);
+            return pState.pSock.SocketListen(iBacklog);
         }
 
         public static int ProtoSSLDisconnect(ProtoSSLRefT pState)
@@ -375,7 +357,7 @@ namespace DirtySDKEAWebKit
             strBody[offset++] = (byte)(ProtoSSLConstants.SSL3_VERSION >> 8);
             strBody[offset++] = (byte)(ProtoSSLConstants.SSL3_VERSION & 0xFF);
 
-            // Generate and append client random.
+            // Generate and append client random
             _GenerateRandom(
                 pSecure.ClientRandom,
                 pSecure.ClientRandom.Length,
@@ -391,7 +373,7 @@ namespace DirtySDKEAWebKit
             // Session ID length = 0.
             strBody[offset++] = 0;
 
-            // Cipher suites length (in bytes).
+            // Cipher suites length (in bytes)
             strBody[offset++] = 0;
             strBody[offset++] = (byte)(_SSL3_CipherSuite.Length * 2);
 
@@ -401,7 +383,7 @@ namespace DirtySDKEAWebKit
                 strBody[offset++] = _SSL3_CipherSuite[i].uIdent[1];
             }
 
-            // Compression methods: one method, null compression.
+            // Compression methods: one method, null compression
             strBody[offset++] = 1;
             strBody[offset++] = 0;
 
@@ -582,11 +564,18 @@ namespace DirtySDKEAWebKit
             // Encrypt PreMasterKey using the server's RSA public key
             var RSAContext = new CryptRSA();
 
+            //Tools.NetPrintf("[ENC] pSecure.Cert.KeyModData:");
+            //Tools.PrintBuffer(pSecure.Cert.KeyModData.AsSpan(0, pSecure.Cert.iKeyModSize).ToArray());
+            //Tools.NetPrintf("[ENC] pSecure.Cert.KeyExpData:");
+            //Tools.PrintBuffer(pSecure.Cert.KeyExpData.AsSpan(0, pSecure.Cert.iKeyExpSize).ToArray());
             RSAContext.Init(
                 pSecure.Cert.KeyModData,
                 pSecure.Cert.iKeyModSize,
                 pSecure.Cert.KeyExpData,
                 pSecure.Cert.iKeyExpSize);
+
+            //Tools.NetPrintf("[ENC] pSecure.PreMasterKey:");
+            //Tools.PrintBuffer(pSecure.PreMasterKey);
 
             RSAContext.InitMaster(
                 pSecure.PreMasterKey,
@@ -683,6 +672,8 @@ namespace DirtySDKEAWebKit
             strHead[2] = (byte)(pSecure.Cert.iKeyModSize >> 8);
             strHead[3] = (byte)(pSecure.Cert.iKeyModSize >> 0);
 
+            //Tools.NetPrintf("[ENC] RSA context is ready! EncryptBlock:");
+            //Tools.PrintBuffer(RSAContext.EncryptBlock.AsSpan(0, pSecure.Cert.iKeyModSize).ToArray());
             _SendPacket(
                 pState,
                 ProtoSSLConstants.SSL3_REC_HANDSHAKE,
@@ -921,7 +912,7 @@ namespace DirtySDKEAWebKit
             if (pState.iState == ProtoSSLConstants.ST_CONN)
             {
                 Tools.NetPrintf("SocketConnect");
-                DirtyNetPS3.SocketConnect(pState.pSock!, pState.PeerAddr!);
+                pState.pSock!.SocketConnect(pState.PeerAddr!);
                 pState.iState = ProtoSSLConstants.ST_WAIT;
             }
 
@@ -931,7 +922,7 @@ namespace DirtySDKEAWebKit
             // Wait for connection
             if (pState.iState == ProtoSSLConstants.ST_WAIT)
             {
-                iResult = DirtyNetPS3.SocketInfo(pState.pSock!, Tools.FourCC("stat"), 0, IntPtr.Zero, 0);
+                iResult = pState.pSock!.SocketInfo(Tools.FourCC("stat"), 0, IntPtr.Zero, 0);
                 Tools.NetPrintf($"SocketInfo iResult == {iResult}");
 
                 if (iResult > 0)
@@ -994,7 +985,7 @@ namespace DirtySDKEAWebKit
                         .AsSpan(pSecure.iSendProg, remaining)
                         .ToArray();
 
-                    iResult = DirtyNetPS3.SocketSend(pState.pSock!, sendBuffer, sendBuffer.Length, 0);
+                    iResult = pState.pSock!.SocketSend(sendBuffer, sendBuffer.Length, 0);
                     if (iResult > 0)
                     {
                         pSecure.iSendProg += iResult;
@@ -1018,7 +1009,7 @@ namespace DirtySDKEAWebKit
 
                     byte[] recvBuffer = new byte[remaining];
 
-                    iResult = DirtyNetPS3.SocketRecv(pState.pSock!, recvBuffer, remaining, 0);
+                    iResult = pState.pSock!.SocketRecv(recvBuffer, remaining, 0);
                     if (iResult > 0)
                     {
                         Array.Copy(recvBuffer, 0, pSecure.RecvData, pSecure.iRecvSize, iResult);
@@ -1072,7 +1063,7 @@ namespace DirtySDKEAWebKit
                 {
                     int remaining = pSecure.iRecvSize - pSecure.iRecvProg;
                     byte[] recvBuffer = new byte[remaining];
-                    iResult = DirtyNetPS3.SocketRecv(pState.pSock!, recvBuffer, remaining, 0);
+                    iResult = pState.pSock!.SocketRecv(recvBuffer, remaining, 0);
                     if (iResult > 0)
                     {
                         Array.Copy(
@@ -1241,8 +1232,7 @@ namespace DirtySDKEAWebKit
 
             if (pState.iState == ProtoSSLConstants.ST_UNSECURE)
             {
-                iResult = DirtyNetPS3.SocketSend(
-                    pState.pSock!,
+                iResult = pState.pSock!.SocketSend(
                     pBuffer,
                     iLength,
                     0);
@@ -1306,8 +1296,7 @@ namespace DirtySDKEAWebKit
 
             if (pState.iState == ProtoSSLConstants.ST_UNSECURE)
             {
-                iResult = DirtyNetPS3.SocketRecv(
-                    pState.pSock!,
+                iResult = pState.pSock!.SocketRecv(
                     pBuffer,
                     iLength,
                     0);
@@ -1590,7 +1579,7 @@ namespace DirtySDKEAWebKit
 
             if (pState.pSock != null)
             {
-                DirtyNetPS3.SocketClose(pState.pSock);
+                pState.pSock.SocketClose();
                 pState.pSock = null;
             }
 
@@ -1675,8 +1664,19 @@ namespace DirtySDKEAWebKit
 
             if (uType == ProtoSSLConstants.SSL3_REC_HANDSHAKE)
             {
-                pSecure.HandshakeMD5.Update(pSend, iSize);
-                pSecure.HandshakeSHA.Update(pSend, (uint)iSize);
+                //Tools.NetPrintf("[ENC] Sending data.");
+
+                //Tools.NetPrintf($"[ENC] MD5 before: 0x{pSecure.HandshakeMD5._uRegs[0]:X8} 0x{pSecure.HandshakeMD5._uRegs[1]:X8} 0x{pSecure.HandshakeMD5._uRegs[2]:X8} 0x{pSecure.HandshakeMD5._uRegs[3]:X8}");
+                //Tools.NetPrintf("[ENC] MD5 _strData before:");
+                //Tools.PrintBuffer(pSecure.HandshakeMD5._strData);
+                pSecure.HandshakeMD5.Update(pSend, iSendOffset, iSize);
+                //Tools.NetPrintf("[ENC] MD5 _strData after:");
+                //Tools.PrintBuffer(pSecure.HandshakeMD5._strData);
+                //Tools.NetPrintf($"[ENC] MD5 after: 0x{pSecure.HandshakeMD5._uRegs[0]:X8} 0x{pSecure.HandshakeMD5._uRegs[1]:X8} 0x{pSecure.HandshakeMD5._uRegs[2]:X8} 0x{pSecure.HandshakeMD5._uRegs[3]:X8}");
+                
+                //Tools.NetPrintf($"[ENC] SHA before: 0x{pSecure.HandshakeSHA.H[0]:X8} 0x{pSecure.HandshakeSHA.H[1]:X8} 0x{pSecure.HandshakeSHA.H[2]:X8} 0x{pSecure.HandshakeSHA.H[3]:X8} 0x{pSecure.HandshakeSHA.H[4]:X8}");
+                pSecure.HandshakeSHA.Update(pSend, iSendOffset, (uint)iSize);
+                //Tools.NetPrintf($"[ENC] SHA after: 0x{pSecure.HandshakeSHA.H[0]:X8} 0x{pSecure.HandshakeSHA.H[1]:X8} 0x{pSecure.HandshakeSHA.H[2]:X8} 0x{pSecure.HandshakeSHA.H[3]:X8} 0x{pSecure.HandshakeSHA.H[4]:X8}");
             }
 
             if ((pState.iState >= ProtoSSLConstants.ST3_SEND_FINISH) &&
@@ -1971,13 +1971,19 @@ namespace DirtySDKEAWebKit
                     0,
                     handshakeLength);
 
-                pSecure.HandshakeMD5.Update(
-                    handshakeData,
-                    handshakeData.Length);
+                //Tools.NetPrintf("[ENC] Reveiving data.");
 
-                pSecure.HandshakeSHA.Update(
-                    handshakeData,
-                    (uint)handshakeData.Length);
+                //Tools.NetPrintf($"[ENC] MD5 before: 0x{pSecure.HandshakeMD5._uRegs[0]:X8} 0x{pSecure.HandshakeMD5._uRegs[1]:X8} 0x{pSecure.HandshakeMD5._uRegs[2]:X8} 0x{pSecure.HandshakeMD5._uRegs[3]:X8}");
+                //Tools.NetPrintf("[ENC] MD5 _strData before:");
+                //Tools.PrintBuffer(pSecure.HandshakeMD5._strData);
+                pSecure.HandshakeMD5.Update(handshakeData, handshakeData.Length);
+                //Tools.NetPrintf("[ENC] MD5 _strData after:");
+                //Tools.PrintBuffer(pSecure.HandshakeMD5._strData);
+                //Tools.NetPrintf($"[ENC] MD5 after: 0x{pSecure.HandshakeMD5._uRegs[0]:X8} 0x{pSecure.HandshakeMD5._uRegs[1]:X8} 0x{pSecure.HandshakeMD5._uRegs[2]:X8} 0x{pSecure.HandshakeMD5._uRegs[3]:X8}");
+                
+                //Tools.NetPrintf($"[ENC] SHA before: 0x{pSecure.HandshakeSHA.H[0]:X8} 0x{pSecure.HandshakeSHA.H[1]:X8} 0x{pSecure.HandshakeSHA.H[2]:X8} 0x{pSecure.HandshakeSHA.H[3]:X8} 0x{pSecure.HandshakeSHA.H[4]:X8}");
+                pSecure.HandshakeSHA.Update(handshakeData, (uint)handshakeData.Length);
+                //Tools.NetPrintf($"[ENC] SHA after: 0x{pSecure.HandshakeSHA.H[0]:X8} 0x{pSecure.HandshakeSHA.H[1]:X8} 0x{pSecure.HandshakeSHA.H[2]:X8} 0x{pSecure.HandshakeSHA.H[3]:X8} 0x{pSecure.HandshakeSHA.H[4]:X8}");
             }
 
             pSecure.uRecvSeqn = unchecked(pSecure.uRecvSeqn + 1);

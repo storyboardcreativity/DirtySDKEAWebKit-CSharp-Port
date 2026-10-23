@@ -1,6 +1,7 @@
 using System;
 using System.Net;
 using System.Net.Sockets;
+using DirtySDKEAWebKit.CSharp;
 
 namespace DirtySDKEAWebKit
 {
@@ -18,6 +19,22 @@ namespace DirtySDKEAWebKit
     public static class DirtyNet
     {
         public const ushort AF_INET = 2;
+
+        public static DirtyNetPS3? CreateSocket(AddressFamily family, SocketType type, ProtocolType proto)
+        {
+            try
+            {
+                Socket socket = new Socket(family, type, proto);
+                socket.Blocking = false;
+
+                return new DirtyNetPS3(socket);
+            }
+            catch (SocketException ex)
+            {
+                Tools.NetPrintf($"dirtynetps3: socket() failed (err={ex.SocketErrorCode})");
+                return null;
+            }
+        }
 
         public static void SockaddrInit(DirtySockAddress addr, ushort family)
         {
