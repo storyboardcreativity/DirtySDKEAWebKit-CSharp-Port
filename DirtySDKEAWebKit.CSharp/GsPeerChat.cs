@@ -9,11 +9,6 @@ public sealed class GsPeerChat
     private byte _gsPeerChat2;
     private readonly byte[] _crypt = new byte[256];
 
-    public GsPeerChat(byte[] chall, byte[] gamekey)
-    {
-        Init(chall, gamekey);
-    }
-
     public void Init(byte[] chall, byte[] gamekey)
     {
         ArgumentNullException.ThrowIfNull(chall);
